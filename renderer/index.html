@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ECU Log Analysis Tool</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>ECU Log Analysis Tool</h1>
+      <div class="file-controls">
+        <button id="openFileBtn" class="btn btn-primary">Open Log File</button>
+        <button id="resetZoomBtn" class="btn btn-secondary" style="display: none;">Reset Zoom</button>
+        <span id="fileName" class="file-name">No file loaded</span>
+      </div>
+    </header>
+
+    <!-- Progress Bar Section -->
+    <div id="progressSection" class="progress-section" style="display: none;">
+      <div class="progress-info">
+        <p id="loadingText" class="progress-text">Processing...</p>
+        <p id="loadingStatus" class="progress-percent">0%</p>
+      </div>
+      <div class="progress-bar-container">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <div id="dropZone" class="drop-zone">
+      <p>Drag and drop a CSV log file here</p>
+      <p class="drop-hint">or click "Open Log File" above</p>
+    </div>
+
+    <div id="contentArea" class="content-area" style="display: none;">
+      <!-- Statistics Panel -->
+      <section class="statistics-panel">
+        <h2>Summary Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Knock Events</div>
+            <div class="stat-value" id="totalKnockEvents">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Max Knock Retard</div>
+            <div class="stat-value" id="maxKnockRetard">0.0°</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Time with Knock</div>
+            <div class="stat-value" id="timeWithKnock">0.0%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Severe Events</div>
+            <div class="stat-value" id="severeEvents">0</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts Section -->
+      <section class="charts-section">
+        <h2>Analysis Charts</h2>
+        <div class="charts-container">
+          <div class="chart-wrapper">
+            <div class="chart-header">
+              <h3>Knock Retard Over Time</h3>
+            </div>
+            <canvas id="knockChart"></canvas>
+          </div>
+          <div class="chart-wrapper">
+            <div class="chart-header">
+              <h3>Engine Speed vs Knock Events</h3>
+            </div>
+            <canvas id="rpmChart"></canvas>
+          </div>
+          <div class="chart-wrapper">
+            <div class="chart-header">
+              <h3>Throttle Position vs Knock Events</h3>
+            </div>
+            <canvas id="throttleChart"></canvas>
+          </div>
+          <div class="chart-wrapper">
+            <div class="chart-header">
+              <h3>Air/Fuel Ratio During Knock Events</h3>
+            </div>
+            <canvas id="afrChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Anomaly Table -->
+      <section class="anomaly-section">
+        <h2>Knock Events Detail</h2>
+        <div class="table-controls">
+          <input type="text" id="searchInput" placeholder="Search..." class="search-input">
+          <select id="severityFilter" class="filter-select">
+            <option value="all">All Severities</option>
+            <option value="mild">Mild</option>
+            <option value="severe">Severe</option>
+          </select>
+        </div>
+        <div class="table-container">
+          <table id="anomalyTable" class="anomaly-table">
+            <thead>
+              <tr>
+                <th data-sort="time">Time (s) ↕</th>
+                <th data-sort="knockRetard">Knock Retard (°) ↕</th>
+                <th data-sort="rpm">RPM ↕</th>
+                <th data-sort="throttle">Throttle (%) ↕</th>
+                <th data-sort="load">Load (g/rev) ↕</th>
+                <th data-sort="afr">A/F Ratio (λ) ↕</th>
+                <th data-sort="severity">Severity ↕</th>
+              </tr>
+            </thead>
+            <tbody id="anomalyTableBody">
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="loadingIndicator" class="loading" style="display: none;">
+      <div class="loading-content">
+        <div class="spinner"></div>
+        <p>Processing log file...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <script>
+    // Register zoom plugin immediately after loading
+    if (typeof Chart !== 'undefined' && typeof zoomPlugin !== 'undefined') {
+      Chart.register(zoomPlugin);
+      console.log('Zoom plugin registered');
+    } else {
+      console.warn('Chart.js or zoom plugin not available');
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="../analysis/dataProcessor.js"></script>
+  <script src="../analysis/knockDetector.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
