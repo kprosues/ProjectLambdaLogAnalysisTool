@@ -43,6 +43,8 @@
         <button class="tab-btn active" data-tab="knock">Knock Analysis</button>
         <button class="tab-btn" data-tab="boost">Boost Control</button>
         <button class="tab-btn" data-tab="afr">Air/Fuel Ratio</button>
+        <button class="tab-btn" data-tab="fueltrim">Short Term Fuel Trim</button>
+        <button class="tab-btn" data-tab="longtermfueltrim">Long Term Fuel Trim</button>
       </div>
 
       <!-- Knock Analysis Tab -->
@@ -304,6 +306,160 @@
           </div>
         </section>
       </div>
+
+      <!-- Short Term Fuel Trim Tab -->
+      <div class="tab-content" data-tab="fueltrim">
+        <!-- Statistics Panel -->
+        <section class="statistics-panel">
+          <h2>Summary Statistics</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Average Trim</div>
+              <div class="stat-value" id="fueltrim-avgTrim">0.0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Max Deviation</div>
+              <div class="stat-value" id="fueltrim-maxDeviation">0.0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Time in Target</div>
+              <div class="stat-value" id="fueltrim-inTargetPercent">0.0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Abnormal Events</div>
+              <div class="stat-value" id="fueltrim-abnormalEvents">0</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+            <h2>Analysis Charts</h2>
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="fueltrim-showThrottleToggle" style="cursor: pointer;" checked>
+                <span>Show Throttle Position</span>
+              </label>
+            </div>
+          </div>
+          <div class="charts-container">
+            <div class="chart-wrapper">
+              <div class="chart-header">
+                <h3>Short Term Fuel Trim Over Time</h3>
+              </div>
+              <canvas id="fueltrim-fuelTrimChart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Fuel Trim Events Table -->
+        <section class="anomaly-section">
+          <h2>Fuel Trim Events Detail</h2>
+          <div class="table-controls">
+            <input type="text" id="fueltrim-searchInput" placeholder="Search..." class="search-input">
+            <select id="fueltrim-eventTypeFilter" class="filter-select">
+              <option value="all">All Event Types</option>
+              <option value="positive">Positive (>+10%)</option>
+              <option value="negative">Negative (<-10%)</option>
+            </select>
+          </div>
+          <div class="table-container">
+            <table id="fueltrim-fuelTrimTable" class="anomaly-table">
+              <thead>
+                <tr>
+                  <th data-sort="time">Time (s) ↕</th>
+                  <th data-sort="shortTermTrim">Fuel Trim (%) ↕</th>
+                  <th data-sort="rpm">RPM ↕</th>
+                  <th data-sort="throttle">Throttle (%) ↕</th>
+                  <th data-sort="load">Load (g/rev) ↕</th>
+                  <th data-sort="afr">A/F Ratio (λ) ↕</th>
+                  <th data-sort="eventType">Event Type ↕</th>
+                </tr>
+              </thead>
+              <tbody id="fueltrim-fuelTrimTableBody">
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- Long Term Fuel Trim Tab -->
+      <div class="tab-content" data-tab="longtermfueltrim">
+        <!-- Statistics Panel -->
+        <section class="statistics-panel">
+          <h2>Summary Statistics</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Average Trim</div>
+              <div class="stat-value" id="longtermfueltrim-avgTrim">0.0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Max Deviation</div>
+              <div class="stat-value" id="longtermfueltrim-maxDeviation">0.0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Time in Target</div>
+              <div class="stat-value" id="longtermfueltrim-inTargetPercent">0.0%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Abnormal Events</div>
+              <div class="stat-value" id="longtermfueltrim-abnormalEvents">0</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+            <h2>Analysis Charts</h2>
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="longtermfueltrim-showThrottleToggle" style="cursor: pointer;" checked>
+                <span>Show Throttle Position</span>
+              </label>
+            </div>
+          </div>
+          <div class="charts-container">
+            <div class="chart-wrapper">
+              <div class="chart-header">
+                <h3>Long Term Fuel Trim Over Time</h3>
+              </div>
+              <canvas id="longtermfueltrim-fuelTrimChart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- Fuel Trim Events Table -->
+        <section class="anomaly-section">
+          <h2>Fuel Trim Events Detail</h2>
+          <div class="table-controls">
+            <input type="text" id="longtermfueltrim-searchInput" placeholder="Search..." class="search-input">
+            <select id="longtermfueltrim-eventTypeFilter" class="filter-select">
+              <option value="all">All Event Types</option>
+              <option value="positive">Positive (>+5%)</option>
+              <option value="negative">Negative (<-5%)</option>
+            </select>
+          </div>
+          <div class="table-container">
+            <table id="longtermfueltrim-fuelTrimTable" class="anomaly-table">
+              <thead>
+                <tr>
+                  <th data-sort="time">Time (s) ↕</th>
+                  <th data-sort="longTermTrim">Fuel Trim (%) ↕</th>
+                  <th data-sort="rpm">RPM ↕</th>
+                  <th data-sort="throttle">Throttle (%) ↕</th>
+                  <th data-sort="load">Load (g/rev) ↕</th>
+                  <th data-sort="afr">A/F Ratio (λ) ↕</th>
+                  <th data-sort="eventType">Event Type ↕</th>
+                </tr>
+              </thead>
+              <tbody id="longtermfueltrim-fuelTrimTableBody">
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
 
     <div id="loadingIndicator" class="loading" style="display: none;">
@@ -330,10 +486,14 @@
   <script src="../analysis/knockDetector.js"></script>
   <script src="../analysis/boostControlAnalyzer.js"></script>
   <script src="../analysis/afrAnalyzer.js"></script>
+  <script src="../analysis/fuelTrimAnalyzer.js"></script>
+  <script src="../analysis/longTermFuelTrimAnalyzer.js"></script>
   <script src="tabManager.js"></script>
   <script src="tabs/knockAnalysisTab.js"></script>
   <script src="tabs/boostControlTab.js"></script>
   <script src="tabs/afrAnalysisTab.js"></script>
+  <script src="tabs/fuelTrimTab.js"></script>
+  <script src="tabs/longTermFuelTrimTab.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

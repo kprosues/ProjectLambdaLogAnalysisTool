@@ -78,10 +78,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const knockDetector = new KnockDetector(null); // Will be set when data is loaded
   const boostAnalyzer = new BoostControlAnalyzer(null); // Will be set when data is loaded
   const afrAnalyzer = new AFRAnalyzer(null); // Will be set when data is loaded
+  const fuelTrimAnalyzer = new FuelTrimAnalyzer(null); // Will be set when data is loaded
+  const longTermFuelTrimAnalyzer = new LongTermFuelTrimAnalyzer(null); // Will be set when data is loaded
   
   tabManager.registerTab('knock', KnockAnalysisTab, knockDetector);
   tabManager.registerTab('boost', BoostControlTab, boostAnalyzer);
   tabManager.registerTab('afr', AFRAnalysisTab, afrAnalyzer);
+  tabManager.registerTab('fueltrim', FuelTrimTab, fuelTrimAnalyzer);
+  tabManager.registerTab('longtermfueltrim', LongTermFuelTrimTab, longTermFuelTrimAnalyzer);
   
   setupEventListeners();
   
@@ -286,6 +290,8 @@ async function processFile(content, filePath) {
     const knockDetector = tabManager.getTabAnalyzer('knock');
     const boostAnalyzer = tabManager.getTabAnalyzer('boost');
     const afrAnalyzer = tabManager.getTabAnalyzer('afr');
+    const fuelTrimAnalyzer = tabManager.getTabAnalyzer('fueltrim');
+    const longTermFuelTrimAnalyzer = tabManager.getTabAnalyzer('longtermfueltrim');
     
     console.log('Setting dataProcessor on analyzers...');
     console.log('dataProcessor:', dataProcessor);
@@ -304,6 +310,14 @@ async function processFile(content, filePath) {
     if (afrAnalyzer) {
       afrAnalyzer.dataProcessor = dataProcessor;
       console.log('✓ Set dataProcessor on afrAnalyzer');
+    }
+    if (fuelTrimAnalyzer) {
+      fuelTrimAnalyzer.dataProcessor = dataProcessor;
+      console.log('✓ Set dataProcessor on fuelTrimAnalyzer');
+    }
+    if (longTermFuelTrimAnalyzer) {
+      longTermFuelTrimAnalyzer.dataProcessor = dataProcessor;
+      console.log('✓ Set dataProcessor on longTermFuelTrimAnalyzer');
     }
     
     // Run knock analysis
@@ -352,6 +366,46 @@ async function processFile(content, filePath) {
       }
     } else {
       console.error('AFR analyzer not available');
+    }
+    
+    // Run fuel trim analysis
+    updateProgress(67, 'Analyzing short term fuel trim...');
+    if (fuelTrimAnalyzer) {
+      const fuelTrimAnalysis = fuelTrimAnalyzer.analyze();
+      console.log('Fuel trim analysis complete:', fuelTrimAnalysis ? 'success' : 'failed');
+      if (fuelTrimAnalysis) {
+        console.log('Fuel trim analysis results:', {
+          events: fuelTrimAnalysis.events?.length || 0,
+          hasStats: !!fuelTrimAnalysis.statistics,
+          hasColumns: !!fuelTrimAnalysis.columns,
+          error: fuelTrimAnalysis.error
+        });
+        tabManager.cache.set('fueltrim', fuelTrimAnalysis);
+      } else {
+        console.error('Fuel trim analysis returned null');
+      }
+    } else {
+      console.error('Fuel trim analyzer not available');
+    }
+    
+    // Run long term fuel trim analysis
+    updateProgress(68, 'Analyzing long term fuel trim...');
+    if (longTermFuelTrimAnalyzer) {
+      const longTermFuelTrimAnalysis = longTermFuelTrimAnalyzer.analyze();
+      console.log('Long term fuel trim analysis complete:', longTermFuelTrimAnalysis ? 'success' : 'failed');
+      if (longTermFuelTrimAnalysis) {
+        console.log('Long term fuel trim analysis results:', {
+          events: longTermFuelTrimAnalysis.events?.length || 0,
+          hasStats: !!longTermFuelTrimAnalysis.statistics,
+          hasColumns: !!longTermFuelTrimAnalysis.columns,
+          error: longTermFuelTrimAnalysis.error
+        });
+        tabManager.cache.set('longtermfueltrim', longTermFuelTrimAnalysis);
+      } else {
+        console.error('Long term fuel trim analysis returned null');
+      }
+    } else {
+      console.error('Long term fuel trim analyzer not available');
     }
     
     updateProgress(70, 'Analysis complete');

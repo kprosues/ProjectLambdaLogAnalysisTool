@@ -38,7 +38,10 @@ ECULogAnalysisTool/
 ├── analysis/                  # Analysis engine modules
 │   ├── dataProcessor.js      # CSV parsing and data processing
 │   ├── knockDetector.js      # Knock event detection logic
-│   └── boostControlAnalyzer.js # Boost control analysis logic
+│   ├── boostControlAnalyzer.js # Boost control analysis logic
+│   ├── afrAnalyzer.js        # Air/Fuel ratio analysis logic
+│   ├── fuelTrimAnalyzer.js   # Short term fuel trim analysis logic
+│   └── longTermFuelTrimAnalyzer.js # Long term fuel trim analysis logic
 └── renderer/                  # UI layer
     ├── index.html            # Main HTML structure
     ├── app.js                # Main application logic
@@ -46,7 +49,10 @@ ECULogAnalysisTool/
     ├── tabManager.js         # Tab management system
     └── tabs/                 # Tab modules
         ├── knockAnalysisTab.js
-        └── boostControlTab.js
+        ├── boostControlTab.js
+        ├── afrAnalysisTab.js
+        ├── fuelTrimTab.js
+        └── longTermFuelTrimTab.js
 ```
 
 ### Design Patterns
@@ -60,7 +66,7 @@ ECULogAnalysisTool/
 1. User loads CSV file → Electron main process reads file
 2. File content passed to renderer → DataProcessor parses CSV
 3. Parsed data stored in DataProcessor instance
-4. Analyzers (KnockDetector, BoostControlAnalyzer) process data
+4. Analyzers (KnockDetector, BoostControlAnalyzer, AFRAnalyzer, FuelTrimAnalyzer, LongTermFuelTrimAnalyzer) process data
 5. Results cached in TabManager
 6. Active tab module renders charts, statistics, and tables
 7. User interactions (zoom, filter, sort) update UI without re-analysis
@@ -201,9 +207,9 @@ ECULogAnalysisTool/
 - **Chart Type**: Line charts with multiple datasets per chart
 - **Chart Configuration**:
   - `responsive: true` - Charts resize with container
-  - `maintainAspectRatio: true` - Preserves aspect ratio
+  - `maintainAspectRatio: false` - Charts fill container (updated for better fit)
   - `pointRadius: 0` - Continuous lines (no point markers for main data)
-  - `spanGaps: false` - Lines break at NaN values
+  - `spanGaps: false` - Lines break at NaN values (gap breaking)
 - **Knock Retard Chart**:
   - Dataset 1: Continuous line of all knock retard values (red, `rgb(220, 53, 69)`)
   - Dataset 2: Severe events as points (red, `pointRadius: 6`)
@@ -406,11 +412,11 @@ ECULogAnalysisTool/
 ---
 
 ## **FR13: Tab Navigation System**
-**Description:** Provide a tabbed interface to switch between different analysis views (Knock Analysis, Boost Control, and Air/Fuel Ratio).
+**Description:** Provide a tabbed interface to switch between different analysis views (Knock Analysis, Boost Control, Air/Fuel Ratio, Short Term Fuel Trim, and Long Term Fuel Trim).
 
 **Acceptance Criteria:**
 - Tab navigation buttons are displayed at the top of the content area
-- Three tabs are available: "Knock Analysis", "Boost Control", and "Air/Fuel Ratio"
+- Five tabs are available: "Knock Analysis", "Boost Control", "Air/Fuel Ratio", "Short Term Fuel Trim", and "Long Term Fuel Trim"
 - Active tab button is visually highlighted (different styling)
 - Clicking a tab button switches to that tab's content
 - Only one tab's content is visible at a time
@@ -431,6 +437,9 @@ ECULogAnalysisTool/
   ```javascript
   tabManager.registerTab('knock', KnockAnalysisTab, knockDetector);
   tabManager.registerTab('boost', BoostControlTab, boostAnalyzer);
+  tabManager.registerTab('afr', AFRAnalysisTab, afrAnalyzer);
+  tabManager.registerTab('fueltrim', FuelTrimTab, fuelTrimAnalyzer);
+  tabManager.registerTab('longtermfueltrim', LongTermFuelTrimTab, longTermFuelTrimAnalyzer);
   ```
 - **Tab Storage**: `Map<tabId, {module, analyzer, initialized}>`
 - **Cache Structure**: `Map<tabId, analysisResults>`
@@ -716,23 +725,6 @@ ECULogAnalysisTool/
 ---
 
 ## **FR22: Multi-Tab File Processing**
-**Description:** Process file data for all registered tabs during file loading.
-
-**Acceptance Criteria:**
-- When a file is loaded, all registered analyzers are initialized with dataProcessor
-- Knock analysis runs during file processing (at 50% progress)
-- Boost control analysis runs during file processing (at 60% progress)
-- AFR analysis runs during file processing (at 65% progress)
-- Analysis results are cached for each tab
-- Active tab is rendered after file processing completes (at 80% progress)
-- Inactive tabs are not rendered until user switches to them
-- Cache is cleared when a new file is loaded
-- Progress messages indicate which analysis is running
-- If an analysis fails, other tabs continue to process
-
----
-
-## **FR23: Tab-Specific UI Elements**
 **Description:** Each tab maintains its own UI elements and controls independently.
 
 **Acceptance Criteria:**
@@ -754,10 +746,249 @@ ECULogAnalysisTool/
   - Search input and event type filter
   - AFR/Lambda unit toggle
   - Data smoothing toggle
-- UI elements are properly namespaced with tab ID prefix (e.g., "knock-", "boost-", "afr-")
+- Short Term Fuel Trim tab has its own:
+  - Statistics panel with fuel trim-specific metrics
+  - Charts (fuel trim over time)
+  - Table with fuel trim events
+  - Search input and event type filter
+  - Throttle position toggle
+- Long Term Fuel Trim tab has its own:
+  - Statistics panel with fuel trim-specific metrics
+  - Charts (fuel trim over time)
+  - Table with fuel trim events
+  - Search input and event type filter
+  - Throttle position toggle
+- UI elements are properly namespaced with tab ID prefix (e.g., "knock-", "boost-", "afr-", "fueltrim-", "longtermfueltrim-")
 - Each tab's controls only affect that tab's content
 - Switching tabs preserves filter/search state within each tab
 - Table sorting state is maintained per tab independently
+
+---
+
+## **FR24: Air/Fuel Ratio Analysis**
+**Description:** Analyze air/fuel ratio control accuracy by comparing target AFR to measured AFR.
+
+**Implementation Details:**
+- **Analyzer Class**: `AFRAnalyzer` in `analysis/afrAnalyzer.js`
+- **Column Detection Algorithm**:
+  - Target AFR: "Power Mode - Fuel Ratio Target (λ)", "Fuel Ratio Target", "AFR Target", "Commanded AFR", etc. (14+ variations)
+  - Measured AFR: "Air/Fuel Sensor #1 (λ)", "AFR Sensor #1", "Lambda Sensor #1", "O2 Sensor", etc. (14+ variations)
+  - Multi-stage matching: exact → case-insensitive → partial → keyword-based
+- **Data Filtering**:
+  - Skips records where target AFR = 1.0 (stoichiometric/idle state)
+  - Skips invalid values (0 or NaN)
+  - Filters lean/rich events at low throttle (< 15%)
+  - Only counts "time in target" for throttle >= 15%
+- **Event Detection Thresholds**:
+  - `leanThreshold = 0.05 λ` (measured > target by 0.05)
+  - `richThreshold = -0.05 λ` (measured < target by 0.05)
+  - `targetTolerance = 0.02 λ` (within ±0.02 is "in target")
+- **Event Grouping**:
+  - `groupingTimeWindow = 1.0 seconds` (1000ms)
+  - Groups events by type (lean, rich, normal) separately
+  - Most severe error (largest absolute) preserved in grouped event
+  - Duration calculated for grouped events
+- **Error Calculation**:
+  - `afrError = measuredAFR - targetAFR`
+  - Positive error = lean (too much air)
+  - Negative error = rich (too much fuel)
+- **Statistics Calculated**:
+  - Average AFR error (absolute value)
+  - Maximum lean deviation (positive error)
+  - Maximum rich deviation (negative error)
+  - Percentage of time within target range (throttle >= 15%)
+  - Count of lean/rich events
+- **Unit Conversion**:
+  - Lambda (λ) is primary unit
+  - AFR conversion: AFR = λ × 14.7
+  - Toggle allows switching between lambda and AFR display
+- **Error Handling**:
+  - Returns empty result structure if required columns not found
+  - Logs available columns to console
+  - Shows UI warning with column detection info
+
+**Acceptance Criteria:**
+- Analyzer finds AFR-related columns with flexible matching:
+  - Target AFR: "Power Mode - Fuel Ratio Target (λ)", "Fuel Ratio Target", "AFR Target", "Commanded AFR", etc.
+  - Measured AFR: "Air/Fuel Sensor #1 (λ)", "AFR Sensor #1", "Lambda Sensor #1", "O2 Sensor", etc.
+- Calculates AFR error for each data point (measured - target)
+- Calculates AFR error percentage relative to target
+- Identifies lean events (error > 0.05 λ above target)
+- Identifies rich events (error < -0.05 λ below target)
+- Determines "in target" range (error within ±0.02 λ tolerance)
+- Filters out events at low throttle (< 15%)
+- Skips stoichiometric target values (λ = 1.0)
+- Groups events within 1.0 seconds into single events
+- Analysis runs automatically during file processing (at 65% progress)
+- Handles missing or invalid AFR data gracefully
+
+---
+
+## **FR25: Global Data Smoothing**
+**Description:** Provide a global data smoothing toggle that applies moving average smoothing to all chart data across all tabs.
+
+**Implementation Details:**
+- **Global Toggle**: Checkbox in header (`global-smoothDataToggle`)
+- **Smoothing Algorithm**: Moving average with configurable window size
+  - Default window size: 5 points
+  - Preserves NaN values (gaps) without smoothing
+  - Only averages valid numeric values
+- **Configuration**: Stored in `window.smoothingConfig`:
+  ```javascript
+  {
+    enabled: false,
+    windowSize: 5
+  }
+  ```
+- **Smoothing Function**: `window.applyDataSmoothing(dataArray, windowSize, enabled)`
+  - Returns original array if disabled or windowSize <= 1
+  - Calculates moving average for each point using half-window on each side
+  - Handles edge cases (start/end of array)
+- **Application**:
+  - Applied to all chart data arrays before rendering
+  - Applied in Knock Analysis, Boost Control, and AFR tabs
+  - Smooths: knock retard, RPM, throttle, AFR, boost targets, boost actual, boost errors, wastegate DC
+- **Zoom Preservation**: When smoothing toggle changes, charts re-render while preserving zoom state
+  - `renderCharts(true)` parameter enables zoom preservation
+  - Saved zoom state restored after chart re-creation
+
+**Acceptance Criteria:**
+- Global "Enable Data Smoothing" checkbox is visible in header
+- Toggle state persists during session (until file reload)
+- Smoothing applies to all charts in all tabs when enabled
+- Moving average window size is 5 points (default)
+- NaN values (gaps) are preserved without smoothing
+- Charts re-render immediately when toggle changes
+- Zoom state is preserved when smoothing is toggled
+- Smoothing does not affect event markers (points)
+- Smoothing can be enabled/disabled independently of other settings
+
+---
+
+## **FR26: Click-to-Zoom on Table Rows**
+**Description:** Enable users to click table rows to zoom charts to that specific event.
+
+**Implementation Details:**
+- **Table Row Enhancement**: 
+  - Each table row stores event data in `data-*` attributes:
+    - `data-event-time`: Event start time
+    - `data-event-duration`: Event duration (if grouped)
+  - Cursor changes to pointer on hover
+  - Tooltip: "Click to zoom to this event"
+  - Hover effect: Background color change (`#e8f4f8`)
+- **Zoom Function**: `zoomChartsToEvent(eventTime, eventDuration, bufferSeconds)`
+  - Calculates zoom range: event time ± buffer, or event time + duration ± buffer
+  - Default buffer: 3 seconds
+  - Applies zoom to all charts in active tab
+  - Uses `zoomToTimeRange()` helper function
+  - Synchronizes all charts after zoom
+- **Implementation**:
+  - Works in all tabs (Knock Analysis, Boost Control, AFR)
+  - Event listener added to each table row in `updateTable()`
+  - Click handler calls `window.zoomChartsToEvent()`
+  - Function is globally accessible via `window.zoomChartsToEvent`
+- **Visual Feedback**:
+  - Row hover: background color change
+  - Cursor: pointer
+  - Tooltip text
+
+**Acceptance Criteria:**
+- Table rows are clickable (cursor changes to pointer)
+- Clicking a table row zooms all charts in the active tab to that event
+- Zoom includes buffer time (3 seconds) before and after event
+- For grouped events, zoom includes the full event duration plus buffer
+- Charts are synchronized after zoom
+- Visual feedback on hover (background color change, cursor pointer)
+- Tooltip indicates click-to-zoom functionality
+- Works in all tabs (Knock Analysis, Boost Control, AFR)
+- Does not affect charts in inactive tabs
+
+---
+
+## **FR27: Throttle Position Display**
+**Description:** Display throttle position overlay on boost control charts for context.
+
+**Implementation Details:**
+- **Toggle Control**: Checkbox in boost control tab header (`boost-showThrottleToggle`)
+- **State Management**: Stored in `tab.module.showThrottle` (default: true)
+- **Chart Integration**:
+  - Added as additional dataset to all boost charts
+  - Color: gray (`rgb(128, 128, 128)`)
+  - Style: dashed line (`borderDash: [5, 5]`)
+  - Width: 1px (thinner than main data)
+  - Point radius: 0 (continuous line)
+- **Dual Y-Axis**:
+  - Left Y-axis: Primary data (boost pressure, error, wastegate DC)
+  - Right Y-axis: Throttle position (%)
+  - Grid lines: Only shown for left axis (right axis grid disabled)
+- **Chart Updates**:
+  - Charts re-render when toggle changes
+  - Data applied through breakAtGaps and smoothing functions
+  - Works on all boost charts: Target vs Actual, Error, Wastegate
+
+**Acceptance Criteria:**
+- "Show Throttle Position" checkbox is visible in boost control tab header
+- Checkbox is checked by default
+- When enabled, throttle position displayed on all boost control charts
+- Throttle line is gray and dashed for visual distinction
+- Dual Y-axis: Left for primary data, Right for throttle (%)
+- Throttle line breaks at time gaps > 1 second
+- Throttle line respects data smoothing toggle
+- Charts update immediately when toggle changes
+- Toggle state persists when switching tabs and returning
+
+---
+
+## **FR28: Chart Gap Breaking**
+**Description:** Break chart lines at time gaps greater than 1 second to prevent misleading connections between distant data points.
+
+**Implementation Details:**
+- **Gap Detection**: `breakAtGaps(dataArray, timeArray)` helper function
+  - Iterates through time array
+  - Detects gaps > 1.0 second between consecutive points
+  - Inserts NaN value at point before gap
+- **Chart Behavior**:
+  - Chart.js `spanGaps: false` setting prevents line connection across NaN
+  - Creates visual break in line at gap
+- **Application**:
+  - Applied to all time-series data arrays before chart rendering
+  - Used in Knock Analysis, Boost Control, and AFR tabs
+  - Applied before smoothing (smoothing preserves NaN values)
+
+**Acceptance Criteria:**
+- Chart lines break at time gaps greater than 1 second
+- No misleading line connections between distant data points
+- Gap breaks visible in all charts (knock, boost, AFR)
+- Gap breaking applies to all data series (not just events)
+- Gap breaks preserved when data smoothing is enabled (NaN values not smoothed)
+- Gap breaking does not affect event markers (points)
+
+---
+
+## **FR29: Boost Control Data Filtering**
+**Description:** Filter boost control data to only show relevant boost conditions (actual boost >= 100 kPa).
+
+**Implementation Details:**
+- **Filtering Logic**: 
+  - Applied during chart rendering and event analysis
+  - Condition: `actualBoost >= 100 kPa`
+  - Filters out atmospheric pressure, vacuum, and low boost conditions
+- **Application**:
+  - Filters data before creating charts
+  - Statistics only calculated for filtered data
+  - Events only created for filtered data points
+- **Rationale**:
+  - Reduces noise from idle/low throttle periods
+  - Focuses analysis on actual boost conditions
+  - Improves chart clarity and relevance
+
+**Acceptance Criteria:**
+- Charts only display data where actual boost >= 100 kPa
+- Statistics only calculated for filtered data
+- Events only created for filtered data points
+- Filtering applies to all boost control charts
+- Filtering reduces visual clutter from non-boost periods
+- User is aware filtering is applied (through chart data range)
 
 ---
 
@@ -771,9 +1002,11 @@ ECULogAnalysisTool/
   3. Knock Analysis (50% progress): `knockDetector.detectKnockEvents()`
   4. Boost Analysis (60% progress): `boostAnalyzer.analyze()`
   5. AFR Analysis (65% progress): `afrAnalyzer.analyze()`
-  6. UI Update (75% progress): Show content area, hide drop zone
-  7. Tab Rendering (80% progress): `tabManager.switchTab(activeTabId)`
-  8. Complete (100% progress): Hide progress bar after 500ms delay
+  6. Short Term Fuel Trim Analysis (67% progress): `fuelTrimAnalyzer.analyze()`
+  7. Long Term Fuel Trim Analysis (68% progress): `longTermFuelTrimAnalyzer.analyze()`
+  8. UI Update (75% progress): Show content area, hide drop zone
+  9. Tab Rendering (80% progress): `tabManager.switchTab(activeTabId)`
+  10. Complete (100% progress): Hide progress bar after 500ms delay
 - **Cache Management**:
   - Cache cleared at start: `tabManager.clearCache()`
   - Results stored: `tabManager.cache.set('knock', {events})` and `tabManager.cache.set('boost', analysisResults)`
@@ -795,6 +1028,8 @@ ECULogAnalysisTool/
 - Knock analysis runs during file processing (at 50% progress)
 - Boost control analysis runs during file processing (at 60% progress)
 - AFR analysis runs during file processing (at 65% progress)
+- Short term fuel trim analysis runs during file processing (at 67% progress)
+- Long term fuel trim analysis runs during file processing (at 68% progress)
 - Analysis results are cached for each tab
 - Active tab is rendered after file processing completes (at 80% progress)
 - Inactive tabs are not rendered until user switches to them
@@ -818,12 +1053,14 @@ ECULogAnalysisTool/
 - **Chart Reuse**: Charts only recreated if they don't exist
 - **Lazy Rendering**: Inactive tabs not rendered until switched to
 - **Data Filtering**: Boost analysis filters to relevant data points (>= 100 kPa)
-- **Event Grouping**: Reduces event count for display (knock: 100ms, boost: 500ms windows)
+- **Event Grouping**: Reduces event count for display (knock: 100ms, boost: 500ms, AFR: 1000ms, fuel trim: 500ms windows)
 
 ### Data Structures
 - **DataProcessor**: Stores parsed CSV data as array of objects
 - **Knock Events**: Array of event objects with severity, time, parameters
 - **Boost Events**: Array of grouped events with type, error, duration
+- **AFR Events**: Array of grouped events with type (lean/rich), error, duration
+- **Fuel Trim Events**: Array of grouped events with type (positive/negative), trim value, duration
 - **Tab Cache**: Map structure for O(1) lookup of analysis results
 
 ### UI/UX Features
@@ -835,18 +1072,297 @@ ECULogAnalysisTool/
 
 ---
 
+## **FR30: Short Term Fuel Trim Analysis**
+**Description:** Analyze short term fuel trim values to identify abnormal conditions where fuel trim exceeds ±10%.
+
+**Implementation Details:**
+- **Analyzer Class**: `FuelTrimAnalyzer` in `analysis/fuelTrimAnalyzer.js`
+- **Column Detection Algorithm**:
+  - Short Term Fuel Trim: "Fuel Trim - Short Term (%)", "Short Term Fuel Trim", "STFT (%)", "STFT", etc. (12+ variations)
+  - Multi-stage matching: exact → case-insensitive → partial → keyword-based
+- **Abnormal Threshold**: `abnormalThreshold = 10.0%` (values exceeding ±10% are considered abnormal)
+- **Event Classification**:
+  - Positive trim (>+10%): Adding fuel (rich condition, ECU trying to lean out)
+  - Negative trim (<-10%): Removing fuel (lean condition, ECU trying to enrich)
+  - Normal: Within ±10% range
+- **Event Grouping**:
+  - `groupingTimeWindow = 0.5 seconds` (500ms)
+  - Groups events by type (positive, negative) separately
+  - Most severe trim value (largest absolute) preserved in grouped event
+  - Duration calculated for grouped events
+- **Statistics Calculated**:
+  - Average fuel trim (absolute value)
+  - Maximum positive trim deviation
+  - Maximum negative trim deviation
+  - Percentage of time within target range (±10%)
+  - Count of abnormal events (positive and negative)
+- **Error Handling**:
+  - Returns empty result structure if required column not found
+  - Logs available columns to console
+  - Shows UI warning with column detection info
+
+**Acceptance Criteria:**
+- Analyzer finds short term fuel trim column with flexible matching:
+  - "Fuel Trim - Short Term (%)", "Short Term Fuel Trim", "STFT (%)", "STFT", etc.
+- Identifies abnormal events when fuel trim > +10% (positive trim)
+- Identifies abnormal events when fuel trim < -10% (negative trim)
+- Determines "in target" range (within ±10% tolerance)
+- Groups events within 0.5 seconds into single events
+- Analysis runs automatically during file processing (at 67% progress)
+- Handles missing or invalid fuel trim data gracefully
+- Statistics display correctly formatted values with percentage symbols
+
+---
+
+## **FR31: Short Term Fuel Trim Statistics Display**
+**Description:** Display summary statistics for short term fuel trim performance.
+
+**Acceptance Criteria:**
+- Displays average fuel trim value in percentage
+- Displays maximum deviation (largest absolute value of positive or negative trim)
+- Displays percentage of time fuel trim was within target range (±10%)
+- Displays count of abnormal events (exceeding ±10%)
+- All statistics are formatted with appropriate decimal places (2 decimal places for percentages)
+- Statistics update when fuel trim tab is rendered
+- Statistics display "0.0%" or "0" when no data is available
+
+---
+
+## **FR32: Short Term Fuel Trim Chart Visualization**
+**Description:** Display interactive chart showing short term fuel trim values over time.
+
+**Implementation Details:**
+- **Short Term Fuel Trim Over Time Chart**:
+  - Dataset 1: Short Term Fuel Trim line (blue, `rgb(0, 123, 255)`)
+  - Dataset 2: Normal range upper limit (+10%) (gray, dashed)
+  - Dataset 3: Normal range lower limit (-10%) (gray, dashed)
+  - Dataset 4: Zero reference line (light gray, dashed)
+  - Dataset 5: Throttle Position (gray, dashed, optional toggle, dual Y-axis)
+  - Dataset 6: Positive trim events (>+10%) (red points, `pointRadius: 6`)
+  - Dataset 7: Negative trim events (<-10%) (yellow points, `pointRadius: 6`)
+- **Chart Options**: Same zoom/pan configuration as other tabs (synchronized within tab)
+- **Gap Breaking**: Lines break at time gaps > 1 second
+- **Data Smoothing**: Respects global data smoothing toggle
+- **Throttle Toggle**: Optional throttle position overlay on chart (dual Y-axis, checkbox in chart header)
+- **Dual Y-Axis**: Left axis for fuel trim (%), right axis for throttle (%) when throttle enabled
+
+**Acceptance Criteria:**
+- **Short Term Fuel Trim Over Time Chart:**
+  - Displays fuel trim as continuous blue line
+  - Shows normal range limits (±10%) as dashed gray lines
+  - Shows zero reference line (light gray, dashed)
+  - Optional throttle position overlay (gray, dashed) with dual Y-axis
+  - Marks positive trim events (>+10%) with red points
+  - Marks negative trim events (<-10%) with yellow points
+- Chart uses time (seconds) as X-axis
+- Chart supports zoom and pan functionality (synchronized within tab)
+- Chart persists across tab switches
+- Chart renders without errors for large datasets
+- Chart is responsive and maintains aspect ratio
+- Lines break at time gaps > 1 second
+- Chart respects global data smoothing toggle
+- Throttle toggle checkbox is visible in chart section header
+
+---
+
+## **FR33: Short Term Fuel Trim Events Detail Table**
+**Description:** Display detailed fuel trim events in a sortable, filterable table.
+
+**Acceptance Criteria:**
+- Table displays columns:
+  - Time (s) with duration for grouped events - formatted to 2 decimal places, duration to 3 decimal places
+  - Fuel Trim (%) - formatted to 2 decimal places (shows max trim for grouped events)
+  - RPM - integer format
+  - Throttle (%) - formatted to 1 decimal place
+  - Load (g/rev) - formatted to 2 decimal places
+  - A/F Ratio (λ) - formatted to 3 decimal places, or "N/A" if not available
+  - Event Type - color-coded badge (positive=red, negative=yellow)
+- Table is sortable by clicking column headers
+- Sort direction toggles (ascending/descending) on repeated clicks
+- Sort indicators (↑/↓) appear in column headers
+- Table updates when filters are applied
+- Table shows only abnormal events (exceeding ±10%)
+- Table displays grouped events with duration when events are grouped within time windows
+- Table rows are clickable to zoom charts to event (FR26)
+
+---
+
+## **FR34: Short Term Fuel Trim Search and Filter**
+**Description:** Search and filter fuel trim events by various criteria.
+
+**Acceptance Criteria:**
+- Search input filters events by:
+  - Time value
+  - Fuel trim value
+  - RPM value
+  - Throttle value
+  - Event type (positive, negative)
+- Event type dropdown filter with options:
+  - "All Event Types" - shows all abnormal events
+  - "Positive (>+10%)" - shows only positive trim events
+  - "Negative (<-10%)" - shows only negative trim events
+- Search is case-insensitive
+- Filters work together (AND logic - both search and event type must match)
+- Table updates in real-time as user types in search field
+- Empty search shows all events matching event type filter
+- Filter state persists when switching tabs and returning
+
+---
+
+## **FR35: Long Term Fuel Trim Analysis**
+**Description:** Analyze long term fuel trim values to identify abnormal conditions where fuel trim exceeds ±5%.
+
+**Implementation Details:**
+- **Analyzer Class**: `LongTermFuelTrimAnalyzer` in `analysis/longTermFuelTrimAnalyzer.js`
+- **Column Detection Algorithm**:
+  - Long Term Fuel Trim: "Fuel Trim - Long Term (%)", "Long Term Fuel Trim", "LTFT (%)", "LTFT", etc. (12+ variations)
+  - Multi-stage matching: exact → case-insensitive → partial → keyword-based
+- **Abnormal Threshold**: `abnormalThreshold = 5.0%` (values exceeding ±5% are considered abnormal - stricter than short term)
+- **Event Classification**:
+  - Positive trim (>+5%): Adding fuel (rich condition, ECU trying to lean out)
+  - Negative trim (<-5%): Removing fuel (lean condition, ECU trying to enrich)
+  - Normal: Within ±5% range
+- **Event Grouping**:
+  - `groupingTimeWindow = 0.5 seconds` (500ms)
+  - Groups events by type (positive, negative) separately
+  - Most severe trim value (largest absolute) preserved in grouped event
+  - Duration calculated for grouped events
+- **Statistics Calculated**:
+  - Average fuel trim (absolute value)
+  - Maximum positive trim deviation
+  - Maximum negative trim deviation
+  - Percentage of time within target range (±5%)
+  - Count of abnormal events (positive and negative)
+- **Error Handling**:
+  - Returns empty result structure if required column not found
+  - Logs available columns to console
+  - Shows UI warning with column detection info
+
+**Acceptance Criteria:**
+- Analyzer finds long term fuel trim column with flexible matching:
+  - "Fuel Trim - Long Term (%)", "Long Term Fuel Trim", "LTFT (%)", "LTFT", etc.
+- Identifies abnormal events when fuel trim > +5% (positive trim)
+- Identifies abnormal events when fuel trim < -5% (negative trim)
+- Determines "in target" range (within ±5% tolerance)
+- Groups events within 0.5 seconds into single events
+- Analysis runs automatically during file processing (at 68% progress)
+- Handles missing or invalid fuel trim data gracefully
+- Statistics display correctly formatted values with percentage symbols
+
+---
+
+## **FR36: Long Term Fuel Trim Statistics Display**
+**Description:** Display summary statistics for long term fuel trim performance.
+
+**Acceptance Criteria:**
+- Displays average fuel trim value in percentage
+- Displays maximum deviation (largest absolute value of positive or negative trim)
+- Displays percentage of time fuel trim was within target range (±5%)
+- Displays count of abnormal events (exceeding ±5%)
+- All statistics are formatted with appropriate decimal places (2 decimal places for percentages)
+- Statistics update when fuel trim tab is rendered
+- Statistics display "0.0%" or "0" when no data is available
+
+---
+
+## **FR37: Long Term Fuel Trim Chart Visualization**
+**Description:** Display interactive chart showing long term fuel trim values over time.
+
+**Implementation Details:**
+- **Long Term Fuel Trim Over Time Chart**:
+  - Dataset 1: Long Term Fuel Trim line (blue, `rgb(0, 123, 255)`)
+  - Dataset 2: Normal range upper limit (+5%) (gray, dashed)
+  - Dataset 3: Normal range lower limit (-5%) (gray, dashed)
+  - Dataset 4: Zero reference line (light gray, dashed)
+  - Dataset 5: Throttle Position (gray, dashed, optional toggle, dual Y-axis)
+  - Dataset 6: Positive trim events (>+5%) (red points, `pointRadius: 6`)
+  - Dataset 7: Negative trim events (<-5%) (yellow points, `pointRadius: 6`)
+- **Chart Options**: Same zoom/pan configuration as other tabs (synchronized within tab)
+- **Gap Breaking**: Lines break at time gaps > 1 second
+- **Data Smoothing**: Respects global data smoothing toggle
+- **Throttle Toggle**: Optional throttle position overlay on chart (dual Y-axis, checkbox in chart header)
+- **Dual Y-Axis**: Left axis for fuel trim (%), right axis for throttle (%) when throttle enabled
+
+**Acceptance Criteria:**
+- **Long Term Fuel Trim Over Time Chart:**
+  - Displays fuel trim as continuous blue line
+  - Shows normal range limits (±5%) as dashed gray lines
+  - Shows zero reference line (light gray, dashed)
+  - Optional throttle position overlay (gray, dashed) with dual Y-axis
+  - Marks positive trim events (>+5%) with red points
+  - Marks negative trim events (<-5%) with yellow points
+- Chart uses time (seconds) as X-axis
+- Chart supports zoom and pan functionality (synchronized within tab)
+- Chart persists across tab switches
+- Chart renders without errors for large datasets
+- Chart is responsive and maintains aspect ratio
+- Lines break at time gaps > 1 second
+- Chart respects global data smoothing toggle
+- Throttle toggle checkbox is visible in chart section header
+
+---
+
+## **FR38: Long Term Fuel Trim Events Detail Table**
+**Description:** Display detailed fuel trim events in a sortable, filterable table.
+
+**Acceptance Criteria:**
+- Table displays columns:
+  - Time (s) with duration for grouped events - formatted to 2 decimal places, duration to 3 decimal places
+  - Fuel Trim (%) - formatted to 2 decimal places (shows max trim for grouped events)
+  - RPM - integer format
+  - Throttle (%) - formatted to 1 decimal place
+  - Load (g/rev) - formatted to 2 decimal places
+  - A/F Ratio (λ) - formatted to 3 decimal places, or "N/A" if not available
+  - Event Type - color-coded badge (positive=red, negative=yellow)
+- Table is sortable by clicking column headers
+- Sort direction toggles (ascending/descending) on repeated clicks
+- Sort indicators (↑/↓) appear in column headers
+- Table updates when filters are applied
+- Table shows only abnormal events (exceeding ±5%)
+- Table displays grouped events with duration when events are grouped within time windows
+- Table rows are clickable to zoom charts to event (FR26)
+
+---
+
+## **FR39: Long Term Fuel Trim Search and Filter**
+**Description:** Search and filter fuel trim events by various criteria.
+
+**Acceptance Criteria:**
+- Search input filters events by:
+  - Time value
+  - Fuel trim value
+  - RPM value
+  - Throttle value
+  - Event type (positive, negative)
+- Event type dropdown filter with options:
+  - "All Event Types" - shows all abnormal events
+  - "Positive (>+5%)" - shows only positive trim events
+  - "Negative (<-5%)" - shows only negative trim events
+- Search is case-insensitive
+- Filters work together (AND logic - both search and event type must match)
+- Table updates in real-time as user types in search field
+- Empty search shows all events matching event type filter
+- Filter state persists when switching tabs and returning
+
+---
+
 ## Summary
 
-This document contains 32 functional requirements covering:
+This document contains 39 functional requirements covering:
 - File loading and parsing (FR1-FR2)
 - Knock detection and analysis (FR3-FR8)
 - Progress tracking and data validation (FR9-FR10)
 - UI responsiveness and desktop integration (FR11-FR12)
 - Tab navigation and management (FR13-FR14, FR20-FR22)
 - Boost control analysis (FR15-FR19)
-- Air/Fuel ratio analysis (FR24-FR28)
-- Chart enhancements and performance (FR29-FR31)
-- Data filtering and accuracy (FR32)
+- Air/Fuel ratio analysis (FR24)
+- Short Term Fuel Trim analysis (FR30-FR34)
+- Long Term Fuel Trim analysis (FR35-FR39)
+- Global data smoothing (FR25)
+- Click-to-zoom on table rows (FR26)
+- Throttle position display (FR27)
+- Chart gap breaking (FR28)
+- Boost control data filtering (FR29)
 - Tab-specific UI elements (FR23)
 
 Each requirement includes detailed acceptance criteria and implementation details to ensure proper implementation and testing. The document also includes framework decisions, architecture overview, and technical specifications for developers.
