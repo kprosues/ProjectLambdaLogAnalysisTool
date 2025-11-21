@@ -27,6 +27,11 @@ class TabManager {
     // Update UI - hide all tab contents and buttons
     document.querySelectorAll('.tab-content').forEach(content => {
       content.classList.remove('active');
+      content.classList.remove('loading');
+      const overlay = content.querySelector('.tab-loading-overlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+      }
     });
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.classList.remove('active');
@@ -38,6 +43,16 @@ class TabManager {
     
     if (activeContent) {
       activeContent.classList.add('active');
+      
+      // Show loading state if data needs to be loaded/rendered
+      const needsLoading = !this.cache.has(tabId) || !tab.initialized;
+      if (needsLoading) {
+        activeContent.classList.add('loading');
+        const overlay = activeContent.querySelector('.tab-loading-overlay');
+        if (overlay) {
+          overlay.style.display = 'flex';
+        }
+      }
     } else {
       console.error(`Tab content not found for tab: ${tabId}`);
     }
@@ -74,12 +89,37 @@ class TabManager {
       setTimeout(() => {
         try {
           tab.module.render(this.cache.get(tabId));
+          
+          // Remove loading state after render completes
+          if (activeContent) {
+            activeContent.classList.remove('loading');
+            const overlay = activeContent.querySelector('.tab-loading-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+          }
         } catch (error) {
           console.error(`Error rendering tab ${tabId}:`, error);
+          // Remove loading state on error
+          if (activeContent) {
+            activeContent.classList.remove('loading');
+            const overlay = activeContent.querySelector('.tab-loading-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+          }
         }
       }, 0);
     } else {
       console.warn(`Tab ${tabId} module or render method not available`);
+      // Remove loading state if no render method
+      if (activeContent) {
+        activeContent.classList.remove('loading');
+        const overlay = activeContent.querySelector('.tab-loading-overlay');
+        if (overlay) {
+          overlay.style.display = 'none';
+        }
+      }
     }
   }
 

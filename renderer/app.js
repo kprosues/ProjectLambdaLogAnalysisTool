@@ -62,6 +62,7 @@ const loadingText = document.getElementById('loadingText');
 const progressBar = document.getElementById('progressBar');
 const loadingStatus = document.getElementById('loadingStatus');
 const fileName = document.getElementById('fileName');
+const contentLoadingOverlay = document.getElementById('contentLoadingOverlay');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -162,15 +163,50 @@ function setupEventListeners() {
   // Global smoothing toggle
   const smoothDataToggle = document.getElementById('global-smoothDataToggle');
   if (smoothDataToggle) {
-    smoothDataToggle.addEventListener('change', (e) => {
+    smoothDataToggle.addEventListener('change', async (e) => {
       window.smoothingConfig.enabled = e.target.checked;
+      
       // Re-render charts in the active tab
       const activeTabId = tabManager.getActiveTab();
       if (activeTabId) {
-        const tab = tabManager.tabs.get(activeTabId);
-        if (tab && tab.module && tab.module.renderCharts) {
-          // Preserve zoom when re-rendering
-          tab.module.renderCharts(true);
+        // Show loading overlay for active tab
+        const tabContent = document.querySelector(`.tab-content[data-tab="${activeTabId}"]`);
+        if (tabContent) {
+          tabContent.classList.add('loading');
+          const overlay = tabContent.querySelector('.tab-loading-overlay');
+          if (overlay) {
+            overlay.style.display = 'flex';
+          }
+        }
+        
+        // Use multiple animation frames to ensure overlay is visible before operations
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const startTime = Date.now();
+        const minDisplayTime = 300; // Minimum time to show overlay (ms)
+        
+        try {
+          const tab = tabManager.tabs.get(activeTabId);
+          if (tab && tab.module && tab.module.renderCharts) {
+            // Preserve zoom when re-rendering
+            tab.module.renderCharts(true);
+          }
+          
+          // Ensure minimum display time
+          const elapsed = Date.now() - startTime;
+          const remainingTime = Math.max(0, minDisplayTime - elapsed);
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        } finally {
+          // Hide loading overlay
+          if (tabContent) {
+            tabContent.classList.remove('loading');
+            const overlay = tabContent.querySelector('.tab-loading-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+          }
         }
       }
     });
@@ -241,6 +277,15 @@ async function processFile(content, filePath) {
       progressSection.style.display = 'block';
     }
     updateProgress(0, 'Starting...');
+    
+    // Show content area early with loading state
+    if (contentArea) {
+      contentArea.style.display = 'block';
+      contentArea.classList.add('loading');
+    }
+    if (contentLoadingOverlay) {
+      contentLoadingOverlay.style.display = 'flex';
+    }
     
     // Show loading modal only briefly for initial feedback
     showLoading(true);
@@ -417,7 +462,6 @@ async function processFile(content, filePath) {
     
     fileName.textContent = filePath.split(/[\\/]/).pop();
     dropZone.style.display = 'none';
-    contentArea.style.display = 'block';
     
     // Show reset zoom button
     if (resetZoomBtn) {
@@ -427,28 +471,61 @@ async function processFile(content, filePath) {
     // Step 4: Render active tab (15% of progress)
     console.log('Rendering active tab...');
     updateProgress(80, 'Rendering charts and statistics...');
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     // Render the active tab (default is 'knock')
     const activeTabId = tabManager.getActiveTab() || 'knock';
     tabManager.switchTab(activeTabId);
     
+    // Smooth progress to completion
+    updateProgress(90, 'Finalizing...');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    updateProgress(95, 'Almost complete...');
+    await new Promise(resolve => setTimeout(resolve, 150));
+    
     // Complete
     console.log('File processing complete!');
     updateProgress(100, 'Complete!');
     
-    // Hide progress bar after a brief delay to show 100%
-    setTimeout(() => {
-      if (progressSection) {
-        progressSection.style.display = 'none';
-      }
+    // Remove loading state from content area
+    if (contentArea) {
+      contentArea.classList.remove('loading');
+    }
+    if (contentLoadingOverlay) {
+      contentLoadingOverlay.style.display = 'none';
+    }
+    
+    // Keep progress bar visible longer to show completion, then fade out smoothly
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Smooth fade out
+    if (progressSection) {
+      progressSection.style.transition = 'opacity 0.5s ease-out';
+      progressSection.style.opacity = '0';
+      setTimeout(() => {
+        if (progressSection) {
+          progressSection.style.display = 'none';
+          progressSection.style.opacity = '1';
+          progressSection.style.transition = '';
+        }
+        showLoading(false);
+      }, 500);
+    } else {
       showLoading(false);
-    }, 500);
+    }
     
   } catch (error) {
     console.error('Error processing file:', error);
     alert(`Error processing file: ${error.message}`);
     showLoading(false);
+    // Remove loading state on error
+    if (contentArea) {
+      contentArea.classList.remove('loading');
+    }
+    if (contentLoadingOverlay) {
+      contentLoadingOverlay.style.display = 'none';
+    }
   }
 }
 

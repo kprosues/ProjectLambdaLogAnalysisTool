@@ -42,9 +42,45 @@ const FuelTrimTab = {
     // Set up throttle toggle
     const throttleToggle = document.getElementById('fueltrim-showThrottleToggle');
     if (throttleToggle) {
-      throttleToggle.addEventListener('change', (e) => {
+      throttleToggle.addEventListener('change', async (e) => {
         this.showThrottle = e.target.checked;
-        this.renderCharts(); // Re-render charts with updated throttle visibility
+        
+        // Show loading overlay immediately
+        const tabContent = document.querySelector('.tab-content[data-tab="fueltrim"]');
+        if (tabContent) {
+          tabContent.classList.add('loading');
+          const overlay = tabContent.querySelector('.tab-loading-overlay');
+          if (overlay) {
+            overlay.style.display = 'flex';
+          }
+        }
+        
+        // Use multiple animation frames to ensure overlay is visible before operations
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const startTime = Date.now();
+        const minDisplayTime = 300; // Minimum time to show overlay (ms)
+        
+        try {
+          // Re-render charts with updated throttle visibility
+          this.renderCharts();
+          
+          // Ensure minimum display time
+          const elapsed = Date.now() - startTime;
+          const remainingTime = Math.max(0, minDisplayTime - elapsed);
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        } finally {
+          // Hide loading overlay
+          if (tabContent) {
+            tabContent.classList.remove('loading');
+            const overlay = tabContent.querySelector('.tab-loading-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+          }
+        }
       });
     }
   },

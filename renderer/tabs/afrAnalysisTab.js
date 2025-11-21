@@ -39,11 +39,51 @@ const AFRAnalysisTab = {
     // Set up AFR toggle
     const afrToggle = document.getElementById('afr-showAFRToggle');
     if (afrToggle) {
-      afrToggle.addEventListener('change', (e) => {
+      afrToggle.addEventListener('change', async (e) => {
         this.showAFR = e.target.checked;
-        this.updateStatistics(); // Update statistics with new units
-        this.renderCharts(true); // Re-render charts with updated units, preserve zoom
-        this.updateTable(); // Re-render table with updated units
+        
+        // Show loading overlay immediately
+        const tabContent = document.querySelector('.tab-content[data-tab="afr"]');
+        if (tabContent) {
+          tabContent.classList.add('loading');
+          const overlay = tabContent.querySelector('.tab-loading-overlay');
+          if (overlay) {
+            overlay.style.display = 'flex';
+          }
+        }
+        
+        // Use multiple animation frames to ensure overlay is visible before operations
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const startTime = Date.now();
+        const minDisplayTime = 300; // Minimum time to show overlay (ms)
+        
+        try {
+          // Update statistics with new units
+          this.updateStatistics();
+          
+          // Re-render charts with updated units, preserve zoom
+          this.renderCharts(true);
+          
+          // Re-render table with updated units
+          this.updateTable();
+          
+          // Ensure minimum display time
+          const elapsed = Date.now() - startTime;
+          const remainingTime = Math.max(0, minDisplayTime - elapsed);
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        } finally {
+          // Hide loading overlay
+          if (tabContent) {
+            tabContent.classList.remove('loading');
+            const overlay = tabContent.querySelector('.tab-loading-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+          }
+        }
       });
     }
 

@@ -13,9 +13,11 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    icon: path.join(__dirname, 'assets', 'icon.png')
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    autoHideMenuBar: true
   });
 
+  mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile('renderer/index.html');
 
   // Open DevTools in development
