@@ -210,7 +210,7 @@ header h1 {
 
 .charts-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+  grid-template-columns: 1fr;
   gap: 20px;
 }
 
@@ -258,7 +258,8 @@ header h1 {
 }
 
 .chart-wrapper canvas {
-  max-height: 300px;
+  width: 100% !important;
+  height: 400px !important;
 }
 
 .anomaly-section h2 {
@@ -494,6 +495,10 @@ header h1 {
 
   .charts-container {
     grid-template-columns: 1fr;
+  }
+  
+  .chart-wrapper canvas {
+    height: 300px !important;
   }
 
   .stats-grid {

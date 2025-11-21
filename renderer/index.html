@@ -13,6 +13,10 @@
       <div class="file-controls">
         <button id="openFileBtn" class="btn btn-primary">Open Log File</button>
         <button id="resetZoomBtn" class="btn btn-secondary" style="display: none;">Reset Zoom</button>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-left: 15px;">
+          <input type="checkbox" id="global-smoothDataToggle" style="cursor: pointer;">
+          <span style="font-size: 14px; color: #333;">Enable Data Smoothing</span>
+        </label>
         <span id="fileName" class="file-name">No file loaded</span>
       </div>
     </header>
@@ -155,7 +159,15 @@
 
         <!-- Charts Section -->
         <section class="charts-section">
-          <h2>Analysis Charts</h2>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+            <h2>Analysis Charts</h2>
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="boost-showThrottleToggle" style="cursor: pointer;" checked>
+                <span>Show Throttle Position</span>
+              </label>
+            </div>
+          </div>
           <div class="charts-container">
             <div class="chart-wrapper">
               <div class="chart-header">
@@ -243,10 +255,6 @@
               <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                 <input type="checkbox" id="afr-showAFRToggle" style="cursor: pointer;">
                 <span>Show AFR (λ × 14.7)</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="afr-smoothDataToggle" style="cursor: pointer;">
-                <span>Enable Data Smoothing</span>
               </label>
             </div>
           </div>

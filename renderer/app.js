@@ -5,6 +5,52 @@ let tabManager = null;
 // Make dataProcessor globally accessible for tab modules
 window.dataProcessor = null;
 
+// Shared smoothing state and utility
+window.smoothingConfig = {
+  enabled: false,
+  windowSize: 5 // Moving average window size
+};
+
+// Shared smoothing utility function
+window.applyDataSmoothing = function(dataArray, windowSize, enabled) {
+  if (!enabled || windowSize <= 1) {
+    return dataArray;
+  }
+  
+  const smoothed = new Array(dataArray.length);
+  const halfWindow = Math.floor(windowSize / 2);
+  
+  for (let i = 0; i < dataArray.length; i++) {
+    const value = dataArray[i];
+    
+    // Preserve NaN values (gaps) without smoothing
+    if (isNaN(value)) {
+      smoothed[i] = NaN;
+      continue;
+    }
+    
+    // Calculate moving average
+    let sum = 0;
+    let count = 0;
+    const start = Math.max(0, i - halfWindow);
+    const end = Math.min(dataArray.length - 1, i + halfWindow);
+    
+    for (let j = start; j <= end; j++) {
+      const val = dataArray[j];
+      // Only include valid numbers (not NaN) in the average
+      if (!isNaN(val) && typeof val === 'number') {
+        sum += val;
+        count++;
+      }
+    }
+    
+    // Use original value if no valid neighbors found
+    smoothed[i] = count > 0 ? sum / count : value;
+  }
+  
+  return smoothed;
+};
+
 // DOM Elements
 const openFileBtn = document.getElementById('openFileBtn');
 const resetZoomBtn = document.getElementById('resetZoomBtn');
@@ -106,6 +152,23 @@ function setupEventListeners() {
           tabManager.switchTab(tabId);
         }
       });
+    });
+  }
+  
+  // Global smoothing toggle
+  const smoothDataToggle = document.getElementById('global-smoothDataToggle');
+  if (smoothDataToggle) {
+    smoothDataToggle.addEventListener('change', (e) => {
+      window.smoothingConfig.enabled = e.target.checked;
+      // Re-render charts in the active tab
+      const activeTabId = tabManager.getActiveTab();
+      if (activeTabId) {
+        const tab = tabManager.tabs.get(activeTabId);
+        if (tab && tab.module && tab.module.renderCharts) {
+          // Preserve zoom when re-rendering
+          tab.module.renderCharts(true);
+        }
+      }
     });
   }
 }
@@ -503,6 +566,93 @@ function resetChartManually(chart, originalRange) {
     }
   }, 50);
 }
+
+function zoomToTimeRange(chart, targetMin, targetMax, originalRange) {
+  // Zoom chart to a specific time range
+  if (!chart.options?.scales?.x) {
+    return;
+  }
+  
+  // Ensure we don't zoom beyond original range
+  const min = Math.max(targetMin, originalRange.min);
+  const max = Math.min(targetMax, originalRange.max);
+  
+  // Update zoom limits
+  if (chart.options.plugins?.zoom?.limits?.x) {
+    chart.options.plugins.zoom.limits.x.min = originalRange.min;
+    chart.options.plugins.zoom.limits.x.max = originalRange.max;
+  }
+  
+  // Set the new range
+  chart.options.scales.x.min = min;
+  chart.options.scales.x.max = max;
+  
+  // Also update the scale object directly
+  if (chart.scales?.x) {
+    if (chart.scales.x.options) {
+      chart.scales.x.options.min = min;
+      chart.scales.x.options.max = max;
+    }
+    chart.scales.x.min = min;
+    chart.scales.x.max = max;
+  }
+  
+  // Update chart
+  chart.update('none');
+}
+
+function zoomChartsToEvent(eventTime, eventDuration = 0, bufferSeconds = 3) {
+  // Zoom all charts in the active tab to show the event with buffer
+  const activeTabId = tabManager.getActiveTab();
+  if (!activeTabId) {
+    console.warn('No active tab');
+    return;
+  }
+  
+  const tab = tabManager.tabs.get(activeTabId);
+  if (!tab || !tab.module) {
+    console.warn('Active tab module not found');
+    return;
+  }
+  
+  const charts = tab.module.charts || {};
+  const chartOriginalRanges = tab.module.chartOriginalRanges || {};
+  
+  if (!charts || Object.keys(charts).length === 0) {
+    console.warn('No charts available to zoom');
+    return;
+  }
+  
+  // Calculate zoom range: event time ± buffer, or event time + duration ± buffer
+  const eventStart = eventTime;
+  const eventEnd = eventTime + (eventDuration || 0);
+  const zoomMin = Math.max(eventStart - bufferSeconds, 0);
+  const zoomMax = eventEnd + bufferSeconds;
+  
+  // Apply zoom to all charts
+  Object.keys(charts).forEach(key => {
+    const chart = charts[key];
+    if (!chart) {
+      return;
+    }
+    
+    const originalRange = chartOriginalRanges[key];
+    if (!originalRange) {
+      return;
+    }
+    
+    zoomToTimeRange(chart, zoomMin, zoomMax, originalRange);
+  });
+  
+  // Synchronize all charts to ensure they're in sync
+  const firstChart = Object.values(charts)[0];
+  if (firstChart) {
+    synchronizeChartZoom(firstChart);
+  }
+}
+
+// Make zoomChartsToEvent globally accessible for tab modules
+window.zoomChartsToEvent = zoomChartsToEvent;
 
 function synchronizeChartZoom(sourceChart) {
   // Prevent infinite loop by checking if we're already synchronizing

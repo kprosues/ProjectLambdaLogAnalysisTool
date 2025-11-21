@@ -17,8 +17,6 @@ const AFRAnalysisTab = {
   currentSort: { column: null, direction: 'asc' },
   showAFR: false, // Toggle between lambda and AFR values
   AFR_CONVERSION_FACTOR: 14.7, // 1 lambda = 14.7 AFR
-  smoothData: false, // Toggle for data smoothing
-  smoothingWindow: 5, // Moving average window size for smoothing
 
   initialize() {
     // Get DOM elements for this tab
@@ -46,15 +44,6 @@ const AFRAnalysisTab = {
         this.updateStatistics(); // Update statistics with new units
         this.renderCharts(true); // Re-render charts with updated units, preserve zoom
         this.updateTable(); // Re-render table with updated units
-      });
-    }
-
-    // Set up smoothing toggle
-    const smoothToggle = document.getElementById('afr-smoothDataToggle');
-    if (smoothToggle) {
-      smoothToggle.addEventListener('change', (e) => {
-        this.smoothData = e.target.checked;
-        this.renderCharts(true); // Re-render charts with smoothing applied, preserve zoom
       });
     }
 
@@ -247,46 +236,6 @@ const AFRAnalysisTab = {
       return result;
     };
     
-    // Helper function to apply moving average smoothing to data array
-    const applySmoothing = (dataArray, windowSize, enabled) => {
-      if (!enabled || windowSize <= 1) {
-        return dataArray;
-      }
-      
-      const smoothed = new Array(dataArray.length);
-      const halfWindow = Math.floor(windowSize / 2);
-      
-      for (let i = 0; i < dataArray.length; i++) {
-        const value = dataArray[i];
-        
-        // Preserve NaN values (gaps) without smoothing
-        if (isNaN(value)) {
-          smoothed[i] = NaN;
-          continue;
-        }
-        
-        // Calculate moving average
-        let sum = 0;
-        let count = 0;
-        const start = Math.max(0, i - halfWindow);
-        const end = Math.min(dataArray.length - 1, i + halfWindow);
-        
-        for (let j = start; j <= end; j++) {
-          const val = dataArray[j];
-          // Only include valid numbers (not NaN) in the average
-          if (!isNaN(val) && typeof val === 'number') {
-            sum += val;
-            count++;
-          }
-        }
-        
-        // Use original value if no valid neighbors found
-        smoothed[i] = count > 0 ? sum / count : value;
-      }
-      
-      return smoothed;
-    };
-    
     // Get AFR data
     const targetAFRsRaw = data.map(row => parseFloat(row[columns.targetAFR]) || 0);
     const measuredAFRsRaw = data.map(row => parseFloat(row[columns.measuredAFR]) || 0);
@@ -311,10 +260,12 @@ const AFRAnalysisTab = {
     let afrErrors = breakAtGaps(afrErrorsForChart, times);
     const throttlePositions = breakAtGaps(throttlePositionsRaw, times);
     
-    // Apply smoothing if enabled
-    targetAFRs = applySmoothing(targetAFRs, this.smoothingWindow, this.smoothData);
-    measuredAFRs = applySmoothing(measuredAFRs, this.smoothingWindow, this.smoothData);
-    afrErrors = applySmoothing(afrErrors, this.smoothingWindow, this.smoothData);
+    // Apply smoothing if enabled (using shared smoothing utility)
+    if (window.applyDataSmoothing && window.smoothingConfig) {
+      targetAFRs = window.applyDataSmoothing(targetAFRs, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      measuredAFRs = window.applyDataSmoothing(measuredAFRs, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      afrErrors = window.applyDataSmoothing(afrErrors, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+    }
 
     // Create event point arrays
     const createEventPointArray = (events, valueExtractor) => {
@@ -345,7 +296,7 @@ const AFRAnalysisTab = {
     // Chart configuration
     const chartOptions = {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           display: true,
@@ -780,6 +731,12 @@ const AFRAnalysisTab = {
       const eventTypeClass = event.eventType === 'lean' ? 'severity-mild' : 
                             event.eventType === 'rich' ? 'severity-severe' : '';
       
+      // Store event data for click handler
+      row.dataset.eventTime = event.time;
+      row.dataset.eventDuration = event.duration || 0;
+      row.style.cursor = 'pointer';
+      row.title = 'Click to zoom to this event';
+      
       // Display time with duration for grouped events
       const timeDisplay = event.duration && event.duration > 0 
         ? `${event.time.toFixed(2)} (${event.duration.toFixed(3)}s)`
@@ -806,6 +763,24 @@ const AFRAnalysisTab = {
         <td>${errorPercentDisplay}%</td>
         <td><span class="severity-badge ${eventTypeClass}">${event.eventType}</span></td>
       `;
+      
+      // Add click handler to zoom to event
+      row.addEventListener('click', () => {
+        const eventTime = parseFloat(row.dataset.eventTime);
+        const eventDuration = parseFloat(row.dataset.eventDuration);
+        if (typeof zoomChartsToEvent === 'function') {
+          zoomChartsToEvent(eventTime, eventDuration, 3);
+        }
+      });
+      
+      // Add hover effect
+      row.addEventListener('mouseenter', () => {
+        row.style.backgroundColor = '#e8f4f8';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.backgroundColor = '';
+      });
+      
       this.elements.afrTableBody.appendChild(row);
     });
   },

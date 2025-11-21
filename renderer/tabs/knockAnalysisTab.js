@@ -90,13 +90,13 @@ const KnockAnalysisTab = {
 
     // Prepare data
     const times = data.map(row => row['Time (s)']);
-    const knockRetards = data.map(row => {
+    let knockRetards = data.map(row => {
       const val = row['Knock Retard (°)'] || 0;
       return val < 0 ? Math.abs(val) : 0;
     });
-    const rpms = data.map(row => row['Engine Speed (rpm)'] || 0);
-    const throttles = data.map(row => row['Throttle Position (%)'] || 0);
-    const afrs = data.map(row => row['Air/Fuel Sensor #1 (λ)'] || 0);
+    let rpms = data.map(row => row['Engine Speed (rpm)'] || 0);
+    let throttles = data.map(row => row['Throttle Position (%)'] || 0);
+    let afrs = data.map(row => row['Air/Fuel Sensor #1 (λ)'] || 0);
 
     // Create knock event point arrays
     const createKnockPointArray = (events, dataArray, valueExtractor) => {
@@ -144,10 +144,18 @@ const KnockAnalysisTab = {
     const severeKnockPoints = createSeverityPointArray(severeEvents);
     const mildKnockPoints = createSeverityPointArray(mildEvents);
 
+    // Apply smoothing if enabled (using shared smoothing utility)
+    if (window.applyDataSmoothing && window.smoothingConfig) {
+      knockRetards = window.applyDataSmoothing(knockRetards, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      rpms = window.applyDataSmoothing(rpms, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      throttles = window.applyDataSmoothing(throttles, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      afrs = window.applyDataSmoothing(afrs, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+    }
+
     // Chart configuration with zoom
     const chartOptions = {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           display: true,
@@ -444,6 +452,12 @@ const KnockAnalysisTab = {
     // Populate table
     sortedEvents.forEach(event => {
       const row = document.createElement('tr');
+      // Store event data for click handler
+      row.dataset.eventTime = event.time;
+      row.dataset.eventDuration = event.duration || 0;
+      row.style.cursor = 'pointer';
+      row.title = 'Click to zoom to this event';
+      
       // Display time with duration for grouped events (FR7)
       const timeDisplay = event.duration && event.duration > 0 
         ? `${event.time.toFixed(2)} (${event.duration.toFixed(3)}s)`
@@ -457,6 +471,24 @@ const KnockAnalysisTab = {
         <td>${event.afr.toFixed(3)}</td>
         <td><span class="severity-badge severity-${event.severity}">${event.severity}</span></td>
       `;
+      
+      // Add click handler to zoom to event
+      row.addEventListener('click', () => {
+        const eventTime = parseFloat(row.dataset.eventTime);
+        const eventDuration = parseFloat(row.dataset.eventDuration);
+        if (typeof zoomChartsToEvent === 'function') {
+          zoomChartsToEvent(eventTime, eventDuration, 3);
+        }
+      });
+      
+      // Add hover effect
+      row.addEventListener('mouseenter', () => {
+        row.style.backgroundColor = '#e8f4f8';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.backgroundColor = '';
+      });
+      
       this.elements.anomalyTableBody.appendChild(row);
     });
   },

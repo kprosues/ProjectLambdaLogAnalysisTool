@@ -344,11 +344,22 @@ const BoostControlTab = {
     const throttlePositionsRaw = filteredData.map(row => parseFloat(row['Throttle Position (%)']) || 0);
     
     // Break lines at gaps > 1 second
-    const boostTargets = breakAtGaps(boostTargetsRaw, times);
-    const actualBoosts = breakAtGaps(actualBoostsRaw, times);
-    const boostErrors = breakAtGaps(boostErrorsRaw, times);
-    const wastegateDCs = wastegateDCsRaw ? breakAtGaps(wastegateDCsRaw, times) : null;
-    const throttlePositions = breakAtGaps(throttlePositionsRaw, times);
+    let boostTargets = breakAtGaps(boostTargetsRaw, times);
+    let actualBoosts = breakAtGaps(actualBoostsRaw, times);
+    let boostErrors = breakAtGaps(boostErrorsRaw, times);
+    let wastegateDCs = wastegateDCsRaw ? breakAtGaps(wastegateDCsRaw, times) : null;
+    let throttlePositions = breakAtGaps(throttlePositionsRaw, times);
+
+    // Apply smoothing if enabled (using shared smoothing utility)
+    if (window.applyDataSmoothing && window.smoothingConfig) {
+      boostTargets = window.applyDataSmoothing(boostTargets, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      actualBoosts = window.applyDataSmoothing(actualBoosts, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      boostErrors = window.applyDataSmoothing(boostErrors, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      if (wastegateDCs) {
+        wastegateDCs = window.applyDataSmoothing(wastegateDCs, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+      }
+      throttlePositions = window.applyDataSmoothing(throttlePositions, window.smoothingConfig.windowSize, window.smoothingConfig.enabled);
+    }
 
     // Create event point arrays
     const createEventPointArray = (events, valueExtractor) => {
@@ -378,7 +389,7 @@ const BoostControlTab = {
     // Chart configuration
     const chartOptions = {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: {
           display: true,
@@ -821,6 +832,12 @@ const BoostControlTab = {
       const eventTypeClass = event.eventType === 'overshoot' ? 'severity-severe' : 
                             event.eventType === 'undershoot' ? 'severity-mild' : '';
       
+      // Store event data for click handler
+      row.dataset.eventTime = event.time;
+      row.dataset.eventDuration = event.duration || 0;
+      row.style.cursor = 'pointer';
+      row.title = 'Click to zoom to this event';
+      
       // Display time with duration for grouped events
       const timeDisplay = event.duration && event.duration > 0 
         ? `${event.time.toFixed(2)} (${event.duration.toFixed(3)}s)`
@@ -841,6 +858,24 @@ const BoostControlTab = {
         <td>${event.wastegateDC !== null ? event.wastegateDC.toFixed(1) : 'N/A'}</td>
         <td><span class="severity-badge ${eventTypeClass}">${event.eventType}</span></td>
       `;
+      
+      // Add click handler to zoom to event
+      row.addEventListener('click', () => {
+        const eventTime = parseFloat(row.dataset.eventTime);
+        const eventDuration = parseFloat(row.dataset.eventDuration);
+        if (typeof zoomChartsToEvent === 'function') {
+          zoomChartsToEvent(eventTime, eventDuration, 3);
+        }
+      });
+      
+      // Add hover effect
+      row.addEventListener('mouseenter', () => {
+        row.style.backgroundColor = '#e8f4f8';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.backgroundColor = '';
+      });
+      
       this.elements.boostTableBody.appendChild(row);
     });
   },

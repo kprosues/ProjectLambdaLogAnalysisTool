@@ -406,18 +406,19 @@ ECULogAnalysisTool/
 ---
 
 ## **FR13: Tab Navigation System**
-**Description:** Provide a tabbed interface to switch between different analysis views (Knock Analysis and Boost Control).
+**Description:** Provide a tabbed interface to switch between different analysis views (Knock Analysis, Boost Control, and Air/Fuel Ratio).
 
 **Acceptance Criteria:**
 - Tab navigation buttons are displayed at the top of the content area
-- Two tabs are available: "Knock Analysis" and "Boost Control"
+- Three tabs are available: "Knock Analysis", "Boost Control", and "Air/Fuel Ratio"
 - Active tab button is visually highlighted (different styling)
 - Clicking a tab button switches to that tab's content
 - Only one tab's content is visible at a time
 - Tab content sections are properly hidden/shown when switching tabs
 - Default active tab is "Knock Analysis" when file is first loaded
-- Tab state persists when switching between tabs (data is cached)
+- Tab state persists when switching between tabs (data is cached, charts persist)
 - Tab buttons remain visible and functional after file processing
+- Charts persist across tab switches (not re-rendered if they already exist)
 
 ---
 
@@ -524,15 +525,14 @@ ECULogAnalysisTool/
 **Description:** Display summary statistics for boost control performance.
 
 **Acceptance Criteria:**
-- Displays average boost error (absolute value) in kPa
 - Displays maximum overshoot value in kPa
-- Displays maximum undershoot value (absolute value) in kPa
 - Displays percentage of time boost was within target range (±2.0 kPa)
 - Displays count of overshoot events
 - Displays count of undershoot events
 - All statistics are formatted with appropriate decimal places (2 decimal places)
 - Statistics update when boost control tab is rendered
 - Statistics display "0.0" or "0" when no data is available
+- Statistics only calculated for data points where actual boost >= 100 kPa (filters out non-boost conditions)
 
 ---
 
@@ -586,8 +586,12 @@ ECULogAnalysisTool/
   - Chart is hidden or shows message if wastegate data is not available
 - All charts use time (seconds) as X-axis
 - Charts support zoom and pan functionality (synchronized within tab)
+- Charts persist across tab switches (not re-rendered if they already exist)
 - Charts render without errors for large datasets
 - Charts are responsive and maintain aspect ratio
+- Charts only display data where actual boost >= 100 kPa (filters out non-boost conditions)
+- Lines break at time gaps > 1 second (prevents misleading connections between distant data points)
+- Throttle position toggle allows showing/hiding throttle overlay on all charts
 
 ---
 
@@ -596,11 +600,11 @@ ECULogAnalysisTool/
 
 **Acceptance Criteria:**
 - Table displays columns:
-  - Time (s) - formatted to 2 decimal places
+  - Time (s) with duration for grouped events - formatted to 2 decimal places, duration to 3 decimal places
   - Boost Target (kPa) - formatted to 2 decimal places
   - Actual Boost (kPa) - formatted to 2 decimal places
-  - Error (kPa) - formatted to 2 decimal places (can be positive or negative)
-  - Error (%) - formatted to 2 decimal places with % symbol
+  - Error (kPa) - formatted to 2 decimal places (can be positive or negative, shows max error for grouped events)
+  - Error (%) - formatted to 2 decimal places with % symbol (shows max error percent for grouped events)
   - Wastegate DC (%) - formatted to 1 decimal place, or "N/A" if not available
   - Event Type - color-coded badge (overshoot=red, undershoot=yellow, normal=default)
 - Table is sortable by clicking column headers
@@ -608,6 +612,7 @@ ECULogAnalysisTool/
 - Sort indicators (↑/↓) appear in column headers
 - Table updates when filters are applied
 - Table shows only events that deviate from target (overshoot, undershoot, or outside tolerance)
+- Table displays grouped events with duration when events are grouped within time windows
 
 ---
 
@@ -717,6 +722,7 @@ ECULogAnalysisTool/
 - When a file is loaded, all registered analyzers are initialized with dataProcessor
 - Knock analysis runs during file processing (at 50% progress)
 - Boost control analysis runs during file processing (at 60% progress)
+- AFR analysis runs during file processing (at 65% progress)
 - Analysis results are cached for each tab
 - Active tab is rendered after file processing completes (at 80% progress)
 - Inactive tabs are not rendered until user switches to them
@@ -740,7 +746,15 @@ ECULogAnalysisTool/
   - Charts (boost target vs actual, boost error, wastegate)
   - Table with boost control events
   - Search input and event type filter
-- UI elements are properly namespaced with tab ID prefix (e.g., "knock-", "boost-")
+  - Throttle position toggle
+- Air/Fuel Ratio tab has its own:
+  - Statistics panel with AFR-specific metrics
+  - Charts (target vs measured AFR, AFR error)
+  - Table with AFR events
+  - Search input and event type filter
+  - AFR/Lambda unit toggle
+  - Data smoothing toggle
+- UI elements are properly namespaced with tab ID prefix (e.g., "knock-", "boost-", "afr-")
 - Each tab's controls only affect that tab's content
 - Switching tabs preserves filter/search state within each tab
 - Table sorting state is maintained per tab independently
@@ -756,9 +770,10 @@ ECULogAnalysisTool/
   2. Analyzer Initialization (45% progress): Set `dataProcessor` on all analyzers
   3. Knock Analysis (50% progress): `knockDetector.detectKnockEvents()`
   4. Boost Analysis (60% progress): `boostAnalyzer.analyze()`
-  5. UI Update (75% progress): Show content area, hide drop zone
-  6. Tab Rendering (80% progress): `tabManager.switchTab(activeTabId)`
-  7. Complete (100% progress): Hide progress bar after 500ms delay
+  5. AFR Analysis (65% progress): `afrAnalyzer.analyze()`
+  6. UI Update (75% progress): Show content area, hide drop zone
+  7. Tab Rendering (80% progress): `tabManager.switchTab(activeTabId)`
+  8. Complete (100% progress): Hide progress bar after 500ms delay
 - **Cache Management**:
   - Cache cleared at start: `tabManager.clearCache()`
   - Results stored: `tabManager.cache.set('knock', {events})` and `tabManager.cache.set('boost', analysisResults)`
@@ -779,6 +794,7 @@ ECULogAnalysisTool/
 - When a file is loaded, all registered analyzers are initialized with dataProcessor
 - Knock analysis runs during file processing (at 50% progress)
 - Boost control analysis runs during file processing (at 60% progress)
+- AFR analysis runs during file processing (at 65% progress)
 - Analysis results are cached for each tab
 - Active tab is rendered after file processing completes (at 80% progress)
 - Inactive tabs are not rendered until user switches to them
@@ -821,13 +837,16 @@ ECULogAnalysisTool/
 
 ## Summary
 
-This document contains 23 functional requirements covering:
+This document contains 32 functional requirements covering:
 - File loading and parsing (FR1-FR2)
 - Knock detection and analysis (FR3-FR8)
 - Progress tracking and data validation (FR9-FR10)
 - UI responsiveness and desktop integration (FR11-FR12)
 - Tab navigation and management (FR13-FR14, FR20-FR22)
 - Boost control analysis (FR15-FR19)
+- Air/Fuel ratio analysis (FR24-FR28)
+- Chart enhancements and performance (FR29-FR31)
+- Data filtering and accuracy (FR32)
 - Tab-specific UI elements (FR23)
 
 Each requirement includes detailed acceptance criteria and implementation details to ensure proper implementation and testing. The document also includes framework decisions, architecture overview, and technical specifications for developers.
