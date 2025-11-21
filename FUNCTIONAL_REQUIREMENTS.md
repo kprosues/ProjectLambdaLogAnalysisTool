@@ -724,7 +724,7 @@ ECULogAnalysisTool/
 
 ---
 
-## **FR22: Multi-Tab File Processing**
+## **FR23: Tab-Specific UI Elements**
 **Description:** Each tab maintains its own UI elements and controls independently.
 
 **Acceptance Criteria:**
@@ -1346,14 +1346,54 @@ ECULogAnalysisTool/
 
 ---
 
+## **FR40: Loading Overlays and Visual Feedback**
+**Description:** Provide visual feedback during chart rendering and UI operations to indicate processing state.
+
+**Implementation Details:**
+- **Content Loading Overlay**:
+  - Displayed during initial file processing (before tab rendering)
+  - Full-screen overlay with spinner and "Processing log file..." message
+  - Gray background (`rgba(100, 100, 100, 0.85)`) with semi-transparent effect
+  - Applied to entire content area during file loading
+  - Automatically hidden after file processing completes
+- **Tab Loading Overlay**:
+  - Displayed per-tab during chart re-rendering operations
+  - Shown when toggling features (smoothing, throttle, AFR units)
+  - Tab-specific overlay with spinner and "Loading data..." message
+  - Applied only to active tab content
+  - Minimum display time: 300ms to ensure visibility
+  - Uses `requestAnimationFrame()` for smooth transitions
+- **Loading State Management**:
+  - Tab content gets `.loading` class during operations
+  - Loading class applies opacity reduction and grayscale filter
+  - Overlay displayed via flexbox with centered spinner
+  - Overlay hidden automatically after operation completes
+- **Application Points**:
+  - Global data smoothing toggle
+  - Tab-specific feature toggles (throttle position, AFR units)
+  - Chart re-rendering operations
+  - Tab switching (during initial render)
+
+**Acceptance Criteria:**
+- Content loading overlay appears during file processing
+- Tab loading overlay appears during chart re-rendering operations
+- Loading overlays show spinner animation and descriptive text
+- Overlays are automatically hidden after operations complete
+- Loading state applies visual feedback (opacity, grayscale) to content
+- Minimum display time ensures overlays are visible (300ms)
+- Overlays do not block user interactions after completion
+- Loading state is properly cleaned up on errors
+
+---
+
 ## Summary
 
-This document contains 39 functional requirements covering:
+This document contains 40 functional requirements covering:
 - File loading and parsing (FR1-FR2)
 - Knock detection and analysis (FR3-FR8)
 - Progress tracking and data validation (FR9-FR10)
 - UI responsiveness and desktop integration (FR11-FR12)
-- Tab navigation and management (FR13-FR14, FR20-FR22)
+- Tab navigation and management (FR13-FR14, FR20-FR23)
 - Boost control analysis (FR15-FR19)
 - Air/Fuel ratio analysis (FR24)
 - Short Term Fuel Trim analysis (FR30-FR34)
@@ -1364,6 +1404,7 @@ This document contains 39 functional requirements covering:
 - Chart gap breaking (FR28)
 - Boost control data filtering (FR29)
 - Tab-specific UI elements (FR23)
+- Loading overlays and visual feedback (FR40)
 
 Each requirement includes detailed acceptance criteria and implementation details to ensure proper implementation and testing. The document also includes framework decisions, architecture overview, and technical specifications for developers.
 

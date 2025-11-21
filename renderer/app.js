@@ -287,15 +287,6 @@ async function processFile(content, filePath) {
       contentLoadingOverlay.style.display = 'flex';
     }
     
-    // Show loading modal only briefly for initial feedback
-    showLoading(true);
-    // Hide modal quickly, keep progress bar visible
-    setTimeout(() => {
-      if (loadingIndicator) {
-        loadingIndicator.style.display = 'none';
-      }
-    }, 100);
-    
     // Step 1: Parse CSV (40% of progress)
     console.log('Starting CSV parse...');
     updateProgress(10, 'Parsing CSV file...');
