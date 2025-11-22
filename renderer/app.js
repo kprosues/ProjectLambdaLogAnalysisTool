@@ -7,7 +7,7 @@ window.dataProcessor = null;
 
 // Shared smoothing state and utility
 window.smoothingConfig = {
-  enabled: false,
+  enabled: true, // Enabled by default when log file is loaded
   windowSize: 5 // Moving average window size
 };
 
@@ -82,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const fuelTrimAnalyzer = new FuelTrimAnalyzer(null); // Will be set when data is loaded
   const longTermFuelTrimAnalyzer = new LongTermFuelTrimAnalyzer(null); // Will be set when data is loaded
   
+  tabManager.registerTab('logscore', LogScoreTab, null); // No analyzer needed
   tabManager.registerTab('knock', KnockAnalysisTab, knockDetector);
   tabManager.registerTab('boost', BoostControlTab, boostAnalyzer);
   tabManager.registerTab('afr', AFRAnalysisTab, afrAnalyzer);
@@ -91,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   
   // Set default active tab
-  tabManager.switchTab('knock');
+  tabManager.switchTab('logscore');
 });
 
 function setupEventListeners() {
@@ -454,6 +455,13 @@ async function processFile(content, filePath) {
     fileName.textContent = filePath.split(/[\\/]/).pop();
     dropZone.style.display = 'none';
     
+    // Enable data smoothing by default when log file is loaded
+    window.smoothingConfig.enabled = true;
+    const smoothDataToggle = document.getElementById('global-smoothDataToggle');
+    if (smoothDataToggle) {
+      smoothDataToggle.checked = true;
+    }
+    
     // Show reset zoom button
     if (resetZoomBtn) {
       resetZoomBtn.style.display = 'inline-block';
@@ -464,8 +472,8 @@ async function processFile(content, filePath) {
     updateProgress(80, 'Rendering charts and statistics...');
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Render the active tab (default is 'knock')
-    const activeTabId = tabManager.getActiveTab() || 'knock';
+    // Render the active tab (default is 'logscore')
+    const activeTabId = tabManager.getActiveTab() || 'logscore';
     tabManager.switchTab(activeTabId);
     
     // Smooth progress to completion

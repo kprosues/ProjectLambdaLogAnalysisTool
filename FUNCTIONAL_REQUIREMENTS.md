@@ -120,6 +120,17 @@ ECULogAnalysisTool/
   - Accumulates data in array during step callback
   - Final data stored in `DataProcessor.data` array
   - Processes large files without blocking UI (async/await pattern)
+- **Progress Fallback**: 
+  - If cursor is not available, estimates progress based on row count
+  - Fallback progress calculation: `(rowCount * 100) / (totalSize / 100)`
+  - Progress updates throttled to prevent UI blocking
+- **DataProcessor Utility Methods**:
+  - `getData()`: Returns parsed data array
+  - `getColumns()`: Returns column names array
+  - `getColumnIndex(columnName)`: Returns index of column in columns array
+  - `getTimeRange()`: Returns `{ min, max }` time range from data
+  - `getValueAtTime(time, columnName)`: Finds closest time match and returns value
+  - Methods available for analyzers and tab modules to access processed data
 
 **Acceptance Criteria:**
 - Parses CSV files with headers correctly
@@ -836,7 +847,7 @@ ECULogAnalysisTool/
 - **Configuration**: Stored in `window.smoothingConfig`:
   ```javascript
   {
-    enabled: false,
+    enabled: true,  // Enabled by default when log file is loaded
     windowSize: 5
   }
   ```
@@ -854,6 +865,7 @@ ECULogAnalysisTool/
 
 **Acceptance Criteria:**
 - Global "Enable Data Smoothing" checkbox is visible in header
+- Smoothing is enabled by default when log file is loaded
 - Toggle state persists during session (until file reload)
 - Smoothing applies to all charts in all tabs when enabled
 - Moving average window size is 5 points (default)
@@ -1047,6 +1059,15 @@ ECULogAnalysisTool/
 - **Column Detection**: Graceful fallbacks with console warnings
 - **Chart Rendering**: Null checks before chart creation
 - **Tab Switching**: Error logging without blocking UI
+- **Column Info Display**: User-friendly UI warnings when required columns are not found
+  - Visual warning panel displayed in statistics section with yellow/amber styling
+  - Shows which columns are being searched for
+  - Displays available columns in expandable/collapsible details section
+  - Highlights potential matching columns (e.g., pressure-related for boost)
+  - Provides console logging for debugging (F12)
+  - Implemented in all analysis tabs (Boost, AFR, Fuel Trim, Long Term Fuel Trim)
+  - Allows tabs to render with empty/default values when columns missing
+  - Returns empty result structures instead of null to prevent crashes
 
 ### Performance Optimizations
 - **Progress Throttling**: Updates limited to every 50 rows or 0.5% change
@@ -1057,6 +1078,8 @@ ECULogAnalysisTool/
 
 ### Data Structures
 - **DataProcessor**: Stores parsed CSV data as array of objects
+  - Provides utility methods: `getData()`, `getColumns()`, `getColumnIndex()`, `getTimeRange()`, `getValueAtTime()`
+  - Accessible globally via `window.dataProcessor` for tab modules
 - **Knock Events**: Array of event objects with severity, time, parameters
 - **Boost Events**: Array of grouped events with type, error, duration
 - **AFR Events**: Array of grouped events with type (lean/rich), error, duration
@@ -1067,7 +1090,11 @@ ECULogAnalysisTool/
 - **Responsive Design**: CSS Grid with `auto-fit` and `minmax()` for flexible layouts
 - **Visual Feedback**: Hover states, active tab highlighting, drag-over effects
 - **Loading States**: Modal spinner + inline progress bar
-- **Error Messages**: Inline warnings in boost tab when columns not found
+- **Error Messages**: Inline warning panels in all tabs when required columns not found
+  - Visual warning boxes with color-coded styling (yellow/amber for warnings)
+  - Expandable details sections showing all available columns
+  - Potential column suggestions (e.g., pressure columns for boost analysis)
+  - Console logging for technical debugging
 - **Table Interactions**: Sortable columns, real-time search, filter dropdowns
 
 ---

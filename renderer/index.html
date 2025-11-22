@@ -14,7 +14,7 @@
         <button id="openFileBtn" class="btn btn-primary">Open Log File</button>
         <button id="resetZoomBtn" class="btn btn-secondary" style="display: none;">Reset Zoom</button>
         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-left: 15px;">
-          <input type="checkbox" id="global-smoothDataToggle" style="cursor: pointer;">
+          <input type="checkbox" id="global-smoothDataToggle" style="cursor: pointer;" checked>
           <span style="font-size: 14px; color: #333;">Enable Data Smoothing</span>
         </label>
         <span id="fileName" class="file-name">No file loaded</span>
@@ -43,15 +43,99 @@
       </div>
       <!-- Tab Navigation -->
       <div class="tabs-container">
-        <button class="tab-btn active" data-tab="knock">Knock Analysis</button>
+        <button class="tab-btn active" data-tab="logscore">Log Score</button>
+        <button class="tab-btn" data-tab="knock">Knock Analysis</button>
         <button class="tab-btn" data-tab="boost">Boost Control</button>
         <button class="tab-btn" data-tab="afr">Air/Fuel Ratio</button>
         <button class="tab-btn" data-tab="fueltrim">Short Term Fuel Trim</button>
         <button class="tab-btn" data-tab="longtermfueltrim">Long Term Fuel Trim</button>
       </div>
 
+      <!-- Log Score Tab -->
+      <div class="tab-content active" data-tab="logscore">
+        <!-- Tab Loading Overlay -->
+        <div class="tab-loading-overlay" style="display: none;">
+          <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+          </div>
+        </div>
+        <!-- Statistics Panel -->
+        <section class="statistics-panel">
+          <h2>Summary Statistics</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Total Issues Found</div>
+              <div class="stat-value" id="logscore-totalIssues">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Critical Issues</div>
+              <div class="stat-value" id="logscore-criticalIssues">0</div>
+            </div>
+            <div class="stat-card" style="grid-column: span 2;">
+              <div class="stat-label">Issues by Category</div>
+              <div class="stat-value" id="logscore-issuesByCategory" style="font-size: 14px;">None</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Issues Table -->
+        <section class="anomaly-section">
+          <h2>All Detected Issues</h2>
+          <div class="table-controls">
+            <input type="text" id="logscore-searchInput" placeholder="Search..." class="search-input">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-left: 10px;">
+              <input type="checkbox" id="logscore-showShortTermTrim" style="cursor: pointer;">
+              <span style="font-size: 14px; color: #333;">Show Short Term Fuel Trim</span>
+            </label>
+            <select id="logscore-sourceFilter" class="filter-select">
+              <option value="all">All Sources</option>
+              <option value="knock">Knock Analysis</option>
+              <option value="boost">Boost Control</option>
+              <option value="afr">Air/Fuel Ratio</option>
+              <option value="fueltrim">Short Term Fuel Trim</option>
+              <option value="longtermfueltrim">Long Term Fuel Trim</option>
+            </select>
+            <select id="logscore-eventTypeFilter" class="filter-select">
+              <option value="all">All Event Types</option>
+              <option value="knock">Knock</option>
+              <option value="overshoot">Overshoot</option>
+              <option value="undershoot">Undershoot</option>
+              <option value="lean">Lean</option>
+              <option value="rich">Rich</option>
+              <option value="positive">Positive Trim</option>
+              <option value="negative">Negative Trim</option>
+            </select>
+            <select id="logscore-severityFilter" class="filter-select">
+              <option value="all">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="severe">Severe</option>
+              <option value="mild">Mild</option>
+              <option value="high">High</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="table-container">
+            <table id="logscore-issuesTable" class="anomaly-table">
+              <thead>
+                <tr>
+                  <th data-sort="time">Time (s) ↕</th>
+                  <th data-sort="source">Source ↕</th>
+                  <th data-sort="eventType">Event Type ↕</th>
+                  <th data-sort="severity">Severity ↕</th>
+                  <th data-sort="value">Value ↕</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody id="logscore-issuesTableBody">
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
       <!-- Knock Analysis Tab -->
-      <div class="tab-content active" data-tab="knock">
+      <div class="tab-content" data-tab="knock">
         <!-- Tab Loading Overlay -->
         <div class="tab-loading-overlay" style="display: none;">
           <div class="loading-content">
@@ -527,6 +611,7 @@
   <script src="../analysis/fuelTrimAnalyzer.js"></script>
   <script src="../analysis/longTermFuelTrimAnalyzer.js"></script>
   <script src="tabManager.js"></script>
+  <script src="tabs/logScoreTab.js"></script>
   <script src="tabs/knockAnalysisTab.js"></script>
   <script src="tabs/boostControlTab.js"></script>
   <script src="tabs/afrAnalysisTab.js"></script>

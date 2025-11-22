@@ -1,6 +1,6 @@
 {
   "name": "ecu-log-analysis-tool",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Desktop application for analyzing ECU log files and detecting anomalies",
   "main": "main.js",
   "scripts": {
@@ -31,6 +31,7 @@
   "build": {
     "appId": "com.eculoganalysis.tool",
     "productName": "ECU Log Analysis Tool",
+    "icon": "assets/icon.png",
     "directories": {
       "output": "dist"
     },
@@ -56,10 +57,10 @@
     },
     "linux": {
       "target": [
-        "AppImage",
         "deb"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "maintainer": "ECU Log Analysis Tool <eculoganalysis@example.com>"
     },
     "nsis": {
       "oneClick": false,
