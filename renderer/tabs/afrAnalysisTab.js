@@ -292,12 +292,22 @@ const AFRAnalysisTab = {
     const conversionFactor = this.showAFR ? this.AFR_CONVERSION_FACTOR : 1.0;
     const targetAFRsForChart = targetAFRsRaw.map(v => v * conversionFactor);
     const measuredAFRsForChart = measuredAFRsRaw.map(v => v * conversionFactor);
-    const afrErrorsForChart = afrErrorsRaw.map(v => v * conversionFactor);
+    
+    // Calculate percent deviation from target for error chart: (error / target) * 100
+    const afrErrorPercentRaw = data.map((row, idx) => {
+      const target = targetAFRsRaw[idx];
+      const error = afrErrorsRaw[idx];
+      // Avoid divide by zero - return NaN if target is 0 or invalid
+      if (!target || target === 0 || isNaN(target) || isNaN(error)) {
+        return NaN;
+      }
+      return (error / target) * 100;
+    });
     
     // Break lines at gaps > 1 second
     let targetAFRs = breakAtGaps(targetAFRsForChart, times);
     let measuredAFRs = breakAtGaps(measuredAFRsForChart, times);
-    let afrErrors = breakAtGaps(afrErrorsForChart, times);
+    let afrErrors = breakAtGaps(afrErrorPercentRaw, times); // Now contains percent deviation
     const throttlePositions = breakAtGaps(throttlePositionsRaw, times);
     
     // Apply smoothing if enabled (using shared smoothing utility)
@@ -522,17 +532,14 @@ const AFRAnalysisTab = {
       }
     }
 
-    // AFR Error Chart
+    // AFR Error Chart - shows percent deviation from target
     if (this.charts.error) this.charts.error.destroy();
     const errorChartEl = document.getElementById('afr-errorChart');
     if (errorChartEl) {
-      // Set unit label for error chart
-      const errorUnitLabel = this.showAFR ? 'AFR' : 'λ';
-      
       const errorDatasets = [
         {
-          label: `AFR Error (${errorUnitLabel})`,
-          data: afrErrors,
+          label: 'AFR Error (%)',
+          data: afrErrors, // Already contains percent deviation
           borderColor: 'rgb(220, 53, 69)',
           backgroundColor: 'rgba(220, 53, 69, 0.1)',
           borderWidth: 2,
@@ -552,7 +559,13 @@ const AFRAnalysisTab = {
       ];
       
       if (leanEvents.length > 0) {
-        const leanErrorPoints = createEventPointArray(leanEvents, e => e.afrError * conversionFactor);
+        // Calculate percent deviation for lean events: (afrError / targetAFR) * 100
+        const leanErrorPoints = createEventPointArray(leanEvents, e => {
+          if (!e.targetAFR || e.targetAFR === 0 || isNaN(e.targetAFR) || isNaN(e.afrError)) {
+            return NaN;
+          }
+          return (e.afrError / e.targetAFR) * 100;
+        });
         errorDatasets.push({
           label: 'Lean Events',
           data: leanErrorPoints,
@@ -567,7 +580,13 @@ const AFRAnalysisTab = {
       }
 
       if (richEvents.length > 0) {
-        const richErrorPoints = createEventPointArray(richEvents, e => e.afrError * conversionFactor);
+        // Calculate percent deviation for rich events: (afrError / targetAFR) * 100
+        const richErrorPoints = createEventPointArray(richEvents, e => {
+          if (!e.targetAFR || e.targetAFR === 0 || isNaN(e.targetAFR) || isNaN(e.afrError)) {
+            return NaN;
+          }
+          return (e.afrError / e.targetAFR) * 100;
+        });
         errorDatasets.push({
           label: 'Rich Events',
           data: richErrorPoints,
@@ -609,7 +628,7 @@ const AFRAnalysisTab = {
               position: 'left',
               title: {
                 display: true,
-                text: `Error (${errorUnitLabel})`
+                text: 'Error (%)'
               }
             },
             y1: {
