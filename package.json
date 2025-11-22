@@ -40,11 +40,13 @@
       "preload.js",
       "renderer/**/*",
       "analysis/**/*",
+      "assets/**/*",
       "node_modules/**/*",
       "package.json"
     ],
     "win": {
       "target": "portable",
+      "icon": "assets/icon.png",
       "forceCodeSigning": false,
       "signAndEditExecutable": false
     },

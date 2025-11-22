@@ -5,6 +5,17 @@ const fs = require('fs');
 let mainWindow;
 
 function createWindow() {
+  // Set icon path based on platform
+  let iconPath;
+  if (process.platform === 'win32') {
+    // On Windows, try .ico first, then fall back to .png
+    const icoPath = path.join(__dirname, 'assets', 'icon.ico');
+    const pngPath = path.join(__dirname, 'assets', 'icon.png');
+    iconPath = fs.existsSync(icoPath) ? icoPath : pngPath;
+  } else {
+    iconPath = path.join(__dirname, 'assets', 'icon.png');
+  }
+  
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -13,7 +24,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    icon: path.join(__dirname, 'assets', 'icon.png'),
+    icon: iconPath,
     autoHideMenuBar: true
   });
 
