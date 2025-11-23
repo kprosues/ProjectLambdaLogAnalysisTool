@@ -48,6 +48,7 @@ ECULogAnalysisTool/
     ├── styles.css            # Styling
     ├── tabManager.js         # Tab management system
     └── tabs/                 # Tab modules
+        ├── logScoreTab.js
         ├── knockAnalysisTab.js
         ├── boostControlTab.js
         ├── afrAnalysisTab.js
@@ -423,16 +424,16 @@ ECULogAnalysisTool/
 ---
 
 ## **FR13: Tab Navigation System**
-**Description:** Provide a tabbed interface to switch between different analysis views (Knock Analysis, Boost Control, Air/Fuel Ratio, Short Term Fuel Trim, and Long Term Fuel Trim).
+**Description:** Provide a tabbed interface to switch between the Log Score overview and all detailed analysis views (Knock Analysis, Boost Control, Air/Fuel Ratio, Short Term Fuel Trim, and Long Term Fuel Trim).
 
 **Acceptance Criteria:**
 - Tab navigation buttons are displayed at the top of the content area
-- Five tabs are available: "Knock Analysis", "Boost Control", "Air/Fuel Ratio", "Short Term Fuel Trim", and "Long Term Fuel Trim"
+- Six tabs are available: "Log Score", "Knock Analysis", "Boost Control", "Air/Fuel Ratio", "Short Term Fuel Trim", and "Long Term Fuel Trim"
 - Active tab button is visually highlighted (different styling)
 - Clicking a tab button switches to that tab's content
 - Only one tab's content is visible at a time
 - Tab content sections are properly hidden/shown when switching tabs
-- Default active tab is "Knock Analysis" when file is first loaded
+- Default active tab is "Log Score" when file is first loaded
 - Tab state persists when switching between tabs (data is cached, charts persist)
 - Tab buttons remain visible and functional after file processing
 - Charts persist across tab switches (not re-rendered if they already exist)
@@ -446,6 +447,7 @@ ECULogAnalysisTool/
 - **TabManager Initialization**: Created in `DOMContentLoaded` event handler
 - **Tab Registration**:
   ```javascript
+  tabManager.registerTab('logscore', LogScoreTab, null);
   tabManager.registerTab('knock', KnockAnalysisTab, knockDetector);
   tabManager.registerTab('boost', BoostControlTab, boostAnalyzer);
   tabManager.registerTab('afr', AFRAnalysisTab, afrAnalyzer);
@@ -739,6 +741,12 @@ ECULogAnalysisTool/
 **Description:** Each tab maintains its own UI elements and controls independently.
 
 **Acceptance Criteria:**
+- Log Score tab has its own:
+  - Summary statistics cards (total issues, critical issues, issues by category)
+  - Toggle to include/exclude short-term fuel trim events
+  - Multi-filter controls (search, source filter, event type filter, severity filter)
+  - Cross-tab navigation cues (row hover state, click-to-switch messaging)
+  - Aggregated issues table with per-row severity badges
 - Knock Analysis tab has its own:
   - Statistics panel with knock-specific metrics
   - Charts (knock retard, RPM, throttle, AFR)
@@ -769,7 +777,7 @@ ECULogAnalysisTool/
   - Table with fuel trim events
   - Search input and event type filter
   - Throttle position toggle
-- UI elements are properly namespaced with tab ID prefix (e.g., "knock-", "boost-", "afr-", "fueltrim-", "longtermfueltrim-")
+- UI elements are properly namespaced with tab ID prefix (e.g., "logscore-", "knock-", "boost-", "afr-", "fueltrim-", "longtermfueltrim-")
 - Each tab's controls only affect that tab's content
 - Switching tabs preserves filter/search state within each tab
 - Table sorting state is maintained per tab independently
@@ -1413,9 +1421,31 @@ ECULogAnalysisTool/
 
 ---
 
+## **FR41: Log Score Aggregation and Navigation**
+**Description:** Provide a Log Score overview tab that consolidates analyzer outputs into a single, filterable issue list with cross-tab navigation.
+
+**Implementation Details:**
+- Implemented in `renderer/tabs/logScoreTab.js` as a TabManager module without its own analyzer.
+- `compileAllIssues()` reads cached results from Knock, Boost, AFR, Short Term Fuel Trim, and Long Term Fuel Trim analyzers; short term trim events are gated by the `showShortTermTrim` toggle.
+- Statistics cards surface total issues, critical issues, and per-source counts based on the aggregated dataset.
+- Filter controls include: search input, source dropdown, event type dropdown, severity dropdown, and the short-term trim toggle. All filters call `updateTable()` and `updateStatistics()`.
+- Table rows contain severity badges, formatted values (units and +/- signs), tooltips, and store `data-event-time` / `data-event-duration` attributes for zooming.
+- Clicking a row switches to the originating tab (`tabManager.switchTab(sourceId)`) and invokes `window.zoomChartsToEvent()` after a short timeout so charts zoom to the relevant time range.
+- Sorting state is preserved per column; headers show ascending/descending indicators and sorting reuses the in-memory `compiledIssues` array.
+
+**Acceptance Criteria:**
+- After processing a log file, the Log Score tab automatically displays up-to-date statistics and a populated issues table.
+- A checkbox labeled "Show Short Term Fuel Trim" exists, is off by default, and immediately adds/removes STFT events (and recomputes statistics) when toggled.
+- Source, event type, severity, and search filters apply simultaneously (AND logic); clearing a filter restores the corresponding dimension.
+- Column headers (Time, Source, Event Type, Severity, Value) are clickable to sort ascending/descending, and the current direction is indicated in the header text.
+- Table rows highlight on hover, display a pointer cursor plus tooltip, and are clickable to jump to the related tab and zoom its charts around the event (using a 3-second buffer and any stored duration).
+- Filter and sort selections persist when the user navigates to another tab and later returns to Log Score during the same session.
+
+---
+
 ## Summary
 
-This document contains 40 functional requirements covering:
+This document contains 41 functional requirements covering:
 - File loading and parsing (FR1-FR2)
 - Knock detection and analysis (FR3-FR8)
 - Progress tracking and data validation (FR9-FR10)
@@ -1432,6 +1462,7 @@ This document contains 40 functional requirements covering:
 - Boost control data filtering (FR29)
 - Tab-specific UI elements (FR23)
 - Loading overlays and visual feedback (FR40)
+- Log Score aggregation and navigation (FR41)
 
 Each requirement includes detailed acceptance criteria and implementation details to ensure proper implementation and testing. The document also includes framework decisions, architecture overview, and technical specifications for developers.
 
