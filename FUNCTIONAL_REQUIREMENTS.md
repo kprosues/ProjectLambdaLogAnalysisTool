@@ -41,19 +41,22 @@ ECULogAnalysisTool/
 │   ├── boostControlAnalyzer.js # Boost control analysis logic
 │   ├── afrAnalyzer.js        # Air/Fuel ratio analysis logic
 │   ├── fuelTrimAnalyzer.js   # Short term fuel trim analysis logic
-│   └── longTermFuelTrimAnalyzer.js # Long term fuel trim analysis logic
+│   ├── longTermFuelTrimAnalyzer.js # Long term fuel trim analysis logic
+│   └── tuneFileParser.js     # Tune file parsing and access
 └── renderer/                  # UI layer
     ├── index.html            # Main HTML structure
     ├── app.js                # Main application logic
     ├── styles.css            # Styling
     ├── tabManager.js         # Tab management system
+    ├── autotuneEngine.js     # Autotune analysis engine
     └── tabs/                 # Tab modules
         ├── logScoreTab.js
         ├── knockAnalysisTab.js
         ├── boostControlTab.js
         ├── afrAnalysisTab.js
         ├── fuelTrimTab.js
-        └── longTermFuelTrimTab.js
+        ├── longTermFuelTrimTab.js
+        └── autotuneTab.js    # Autotune tab module
 ```
 
 ### Design Patterns
@@ -1671,9 +1674,106 @@ ECULogAnalysisTool/
 
 ---
 
+## **FR42: Autotune Fuel Base Analysis and Tune Modification**
+**Description:** Analyze datalog data against tune file fuel_base table to generate suggested fuel base adjustments for both open-loop (Power Enrichment) and closed-loop fueling modes, with the ability to export modified tune files.
+
+**Implementation Details:**
+- **Engine Module**: `AutotuneEngine` in `renderer/autotuneEngine.js` (IIFE module)
+- **Tab Module**: `AutotuneTab` in `renderer/tabs/autotuneTab.js`
+- **Required Columns**:
+  - `Engine Speed (rpm)`
+  - `Load (MAF) (g/rev)`
+  - `Air/Fuel Sensor #1 (λ)`
+  - `Power Mode - Fuel Ratio Target (λ)`
+  - `Fuel Trim - Short Term (%)`
+  - `Fuel Trim - Long Term (%)`
+  - `Throttle Position (%)`
+- **Required Tune File Parameters**:
+  - `base_spark_rpm_index` (RPM axis, 16 points)
+  - `base_spark_map_index` (Load axis, 16 points)
+  - `fuel_base` (16x16 table, indexed by RPM x Load)
+  - `pe_enable_load` (16 values, indexed by RPM)
+  - `pe_enable_tps` (16 values, indexed by RPM)
+- **Data Processing Flow**:
+  1. Filter rows with valid RPM, load, lambda_actual, lambda_target, throttle (matching Python `dropna`)
+  2. Calculate RPM/Load indices using `axisIndex()` function (matches Python `np.searchsorted`)
+  3. Classify loop state:
+     - **Open Loop (PE Mode)**: `lambda_target < 1.0` AND `load >= pe_enable_load[rpmIdx]` AND `throttle >= pe_enable_tps[rpmIdx]`
+     - **Closed Loop**: All other conditions
+  4. For open loop: Filter `lambda_target > 0` and `lambda_actual > 0`, calculate `ratio = lambda_actual / lambda_target`
+  5. For closed loop: Use `combined_trim = STFT + LTFT` (NaN values default to 0.0)
+  6. Bin data by RPM/Load cell using `${rpmIdx}_${loadIdx}` key
+  7. Filter bins by minimum sample count
+  8. Calculate suggested fuel_base values:
+     - **Open Loop**: `suggested = current * meanRatio`
+     - **Closed Loop**: `suggested = current * (1 + meanTrim / 100)`
+  9. Apply change limit (clamps modifications to ±changeLimit% from source tune file)
+  10. Track clamped modifications for highlighting
+- **Axis Indexing Algorithm** (`axisIndex()`):
+  - Matches Python `np.searchsorted(axis, value, side="right") - 1`
+  - Clamps to [0, len-1] range
+  - Returns null for NaN values or out-of-range (if clamp=false)
+- **Change Limit Application**:
+  - Change limit calculated from source/analysis tune file (ensures idempotency)
+  - If `abs(changePct) > changeLimit`, clamp to `sourceOriginal * (1 ± changeLimit/100)`
+  - Clamped modifications tracked with original, suggested, applied, and changePct values
+- **Idempotency**: Change limits always based on analysis tune file, not base tune file (if provided)
+- **Form Inputs**:
+  - **Min Samples**: Minimum data points per RPM/Load cell (default: 5)
+  - **Change Limit (%)**: Maximum allowed change from original value (default: 5%)
+  - **Base Tune File (Optional)**: Alternative tune file to modify (if not provided, uses currently loaded tune)
+  - **Output Tune File Name**: Filename for exported tune (default: `.tune` extension)
+- **Summary Tables**:
+  - **Open Loop Summary**: RPM, Load, Samples, Mean Error (%), Current Fuel Base, Suggested Fuel Base
+  - **Closed Loop Summary**: RPM, Load, Samples, Mean Trim (%), Current Fuel Base, Suggested Fuel Base
+  - Tables sorted by absolute error/trim (largest first)
+  - Rows exceeding change limit highlighted (yellow background `#fff3cd`, yellow left border `#ffc107`)
+  - Tooltip shows: "Change limit exceeded: Suggested X.X% change, clamped to ±Y%"
+- **File Download**:
+  - Downloads modified tune file as JSON
+  - Automatically appends timestamp to filename: `YYYYMMDD_HHMMSS` format
+  - If output filename provided, auto-downloads after analysis completes (100ms delay)
+  - Uses base tune file (if provided) or currently loaded tune as template
+  - Updates `fuel_base` map in cloned tune data
+  - Validates fuel_base table dimensions match RPM/Load axes
+
+**Acceptance Criteria:**
+- Autotune tab is accessible from tab navigation
+- Form accepts min samples (integer, min 1, default 5)
+- Form accepts change limit (float, min 0, default 5%)
+- Form accepts optional base tune file (JSON or .tune extension)
+- Form accepts output tune file name (text input, defaults to `.tune` extension)
+- Analysis requires both tune file and datalog to be loaded
+- Analysis validates all required columns are present in datalog
+- Analysis validates tune file contains required tables and axes
+- Analysis correctly classifies open-loop vs closed-loop data points
+- Open-loop detection uses PE enable thresholds from tune file
+- Open-loop analysis filters `lambda_target > 0` after classification
+- Closed-loop analysis uses combined fuel trim (STFT + LTFT, NaN = 0.0)
+- Data is binned correctly by RPM/Load indices (matches Python implementation)
+- Minimum sample count filter excludes bins with insufficient data
+- Suggested fuel_base values calculated correctly:
+  - Open loop: based on lambda ratio (actual/target)
+  - Closed loop: based on fuel trim percentage
+- Change limit is applied correctly (clamps to ±changeLimit% from source tune)
+- Clamped modifications are tracked and displayed in summary message
+- Summary tables display open-loop and closed-loop recommendations separately
+- Tables show RPM, Load, Samples, Error/Trim, Current, and Suggested values
+- Rows exceeding change limit are highlighted with yellow background and border
+- Tooltip on highlighted rows shows change limit information
+- Download button is enabled after successful analysis
+- Tune file download includes timestamp in filename
+- Auto-download occurs if output filename is provided (after 100ms delay)
+- Base tune file (if provided) is used as template for modifications
+- Modified tune file contains updated `fuel_base` table
+- All other tune file parameters remain unchanged
+- Error messages are displayed for missing columns, missing tune data, or analysis failures
+
+---
+
 ## Summary
 
-This document contains 41 functional requirements covering:
+This document contains 42 functional requirements covering:
 - File loading and parsing (FR1-FR2)
 - Knock detection and analysis (FR3-FR8)
 - Progress tracking and data validation (FR9-FR10)
@@ -1691,6 +1791,7 @@ This document contains 41 functional requirements covering:
 - Tab-specific UI elements (FR23)
 - Loading overlays and visual feedback (FR40)
 - Log Score aggregation and navigation (FR41)
+- Autotune fuel base analysis and tune modification (FR42)
 
 Each requirement includes detailed acceptance criteria and implementation details to ensure proper implementation and testing. The document also includes framework decisions, architecture overview, technical specifications for developers, and a comprehensive UI/UX Design System section documenting color palettes, typography, spacing, component styling, interactive states, and responsive design patterns.
 
