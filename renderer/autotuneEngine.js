@@ -11,23 +11,34 @@
   ];
 
   function axisIndex(value, axis, clamp = true) {
+    // Match Python axis_index implementation exactly:
+    // Python: axis_index(value, axis, clamp=True)
+    //   - Returns None if NaN
+    //   - Returns 0 if value < axis[0] (if clamp)
+    //   - Returns len-1 if value > axis[-1] (if clamp)
+    //   - Otherwise: int(np.searchsorted(axis, value, side="right") - 1)
+    //     then clamped to [0, len-1]
     if (!Array.isArray(axis) || axis.length === 0 || isNaN(value)) {
       return null;
     }
-    if (value <= axis[0]) {
+    if (value < axis[0]) {
       return clamp ? 0 : null;
     }
-    if (value >= axis[axis.length - 1]) {
+    if (value > axis[axis.length - 1]) {
       return clamp ? axis.length - 1 : null;
     }
-    for (let i = 0; i < axis.length - 1; i++) {
-      const current = axis[i];
-      const next = axis[i + 1];
-      if (value >= current && value < next) {
-        return i;
+    // np.searchsorted(axis, value, side="right") finds the insertion point
+    // such that all elements to the right are >= value
+    // Then subtract 1 to get the index of the last element <= value
+    let insertIdx = axis.length;
+    for (let i = 0; i < axis.length; i++) {
+      if (axis[i] > value) {
+        insertIdx = i;
+        break;
       }
     }
-    return axis.length - 1;
+    const idx = insertIdx - 1;
+    return Math.max(0, Math.min(idx, axis.length - 1));
   }
 
   function clone2DArray(table) {
@@ -94,10 +105,19 @@
       return { error: 'PE enable tables do not match RPM axis length.' };
     }
 
+    // Process all rows: filter valid data, classify loop state, then bin by RPM/Load
+    // This matches the Python implementation logic:
+    // 1. Filter rows with valid rpm, load, lambda_actual, lambda_target
+    // 2. Calculate indices
+    // 3. Classify loop state (open if lambda_target < 1.0 and PE conditions met)
+    // 4. For open loop: filter lambda_target > 0, then calculate ratio
+    // 5. For closed loop: use fuel trims
+    
     const openBins = {};
     const closedBins = {};
     let totalOpenSamples = 0;
     let totalClosedSamples = 0;
+    let skippedRows = 0;
 
     data.forEach(row => {
       const rpm = parseFloat(row['Engine Speed (rpm)']);
@@ -106,29 +126,51 @@
       const lambdaTarget = parseFloat(row['Power Mode - Fuel Ratio Target (λ)']);
       const throttle = parseFloat(row['Throttle Position (%)']);
 
-      if (!isFinite(rpm) || !isFinite(load)) {
+      // Filter: require valid rpm, load, lambda_actual, lambda_target (matching Python dropna)
+      if (!isFinite(rpm) || !isFinite(load) || !isFinite(lambdaActual) || !isFinite(lambdaTarget)) {
+        skippedRows += 1;
         return;
       }
 
       const rpmIdx = axisIndex(rpm, rpmAxis);
       const loadIdx = axisIndex(load, loadAxis);
       if (rpmIdx === null || loadIdx === null) {
+        skippedRows += 1;
         return;
       }
 
-      const loadThreshold = peEnableLoad[rpmIdx] || Infinity;
-      const tpsThreshold = peEnableTps[rpmIdx] || Infinity;
+      // Get PE enable thresholds for current RPM (matching Python: tune.pe_enable_load_at_rpm(rpm))
+      // pe_enable_load and pe_enable_tps are indexed by RPM axis (same as fuel_base)
+      const loadThreshold = (rpmIdx !== null && peEnableLoad[rpmIdx] !== undefined) 
+        ? peEnableLoad[rpmIdx] 
+        : Infinity;
+      const tpsThreshold = (rpmIdx !== null && peEnableTps[rpmIdx] !== undefined) 
+        ? peEnableTps[rpmIdx] 
+        : Infinity;
+      
+      // Classify loop state (matching Python classify_loop_state):
       // Open loop (PE mode) is active when:
       // - Load >= pe_enable_load threshold for current RPM
-      // - TPS >= pe_enable_tps threshold for current RPM  
-      // - Lambda target indicates PE mode (lambda_target < 1.0 and lambda_target > 0)
-      const isOpenLoop = isFinite(lambdaTarget) && lambdaTarget > 0 && lambdaTarget < 1.0 &&
+      // - TPS >= pe_enable_tps threshold for current RPM
+      // - Lambda target indicates PE mode (lambda_target < 1.0)
+      // Note: lambda_target > 0 filter is applied AFTER classification (matching Python)
+      const isOpenLoop = lambdaTarget < 1.0 &&
         load >= loadThreshold && throttle >= tpsThreshold;
 
       if (isOpenLoop) {
-        if (!isFinite(lambdaActual) || lambdaActual <= 0) {
+        // Filter: lambda_target > 0 (matching Python: open_rows = open_rows[open_rows["lambda_target"] > 0])
+        if (lambdaTarget <= 0) {
+          skippedRows += 1;
           return;
         }
+        
+        // Filter: lambda_actual must be valid and > 0
+        if (lambdaActual <= 0) {
+          skippedRows += 1;
+          return;
+        }
+        
+        // Calculate lambda ratio (measured vs target)
         const ratio = lambdaActual / lambdaTarget;
         const key = `${rpmIdx}_${loadIdx}`;
         if (!openBins[key]) {
@@ -138,8 +180,14 @@
         openBins[key].sumRatio += ratio;
         totalOpenSamples += 1;
       } else {
-        const stft = parseFloat(row['Fuel Trim - Short Term (%)']) || 0;
-        const ltft = parseFloat(row['Fuel Trim - Long Term (%)']) || 0;
+        // Closed loop: use fuel trims (STFT + LTFT)
+        // Fill NaN with 0.0 (matching Python: logs["stft"] = logs["stft"].fillna(0.0))
+        const stft = isFinite(parseFloat(row['Fuel Trim - Short Term (%)'])) 
+          ? parseFloat(row['Fuel Trim - Short Term (%)']) 
+          : 0.0;
+        const ltft = isFinite(parseFloat(row['Fuel Trim - Long Term (%)'])) 
+          ? parseFloat(row['Fuel Trim - Long Term (%)']) 
+          : 0.0;
         const combined = stft + ltft;
         const key = `${rpmIdx}_${loadIdx}`;
         if (!closedBins[key]) {
@@ -253,7 +301,8 @@
       changeLimitPercent: changeLimit,
       minSamples,
       totalOpenSamples,
-      totalClosedSamples
+      totalClosedSamples,
+      skippedRows
     };
   }
 

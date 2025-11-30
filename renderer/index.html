@@ -1027,14 +1027,14 @@
           if (plugin) {
             try {
               Chart.register(plugin);
-              console.log('Zoom plugin registered successfully');
-            } catch (e) {
-              // Plugin might already be registered, which is fine
-              if (!e.message || (!e.message.includes('already registered') && !e.message.includes('already exists'))) {
-                console.warn('Error registering zoom plugin:', e);
-              }
+            console.log('Zoom plugin registered successfully');
+          } catch (e) {
+            // Plugin might already be registered, which is fine
+            if (!e.message || (!e.message.includes('already registered') && !e.message.includes('already exists'))) {
+              console.warn('Error registering zoom plugin:', e);
             }
-          } else {
+          }
+        } else {
             console.warn('Zoom plugin not found. Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('zoom') || k.toLowerCase().includes('chart')));
           }
         } else {
@@ -1066,11 +1066,11 @@
           if (plugin) {
             try {
               Chart.register(plugin);
-              console.log('Zoom plugin registered on DOMContentLoaded (fallback)');
-            } catch (e) {
-              // Plugin might already be registered, which is fine
-              if (!e.message || (!e.message.includes('already registered') && !e.message.includes('already exists'))) {
-                // Only warn if it's not already registered
+            console.log('Zoom plugin registered on DOMContentLoaded (fallback)');
+          } catch (e) {
+            // Plugin might already be registered, which is fine
+            if (!e.message || (!e.message.includes('already registered') && !e.message.includes('already exists'))) {
+              // Only warn if it's not already registered
               }
             }
           }

@@ -156,7 +156,7 @@ const AutotuneTab = {
         ...result,
         outputFileName: this.getOutputFileName()
       };
-      this.renderSummary(result.openSummary, result.closedSummary);
+      this.renderSummary(result.openSummary, result.closedSummary, result.clampedModifications || []);
 
       const summaryMessage = [
         `Analysis complete. ${result.modificationsApplied || 0} cells updated.`,
@@ -167,6 +167,15 @@ const AutotuneTab = {
 
       this.setMessage(summaryMessage || 'Analysis complete.', 'success');
       this.toggleDownloadButton(true);
+
+      // Auto-download if output filename is provided (user entered a value in the field)
+      const outputNameValue = (this.elements.outputName?.value || '').trim();
+      if (outputNameValue) {
+        // User provided a custom filename, auto-download with timestamp
+        setTimeout(() => {
+          this.downloadTune();
+        }, 100); // Small delay to ensure UI updates
+      }
     } catch (error) {
       console.error('Autotune analysis error:', error);
       this.analysisResult = null;
@@ -176,12 +185,13 @@ const AutotuneTab = {
     }
   },
 
-  renderSummary(openRows, closedRows) {
-    this.renderTable(this.elements.openSummary, openRows, 'open');
-    this.renderTable(this.elements.closedSummary, closedRows, 'closed');
+  renderSummary(openRows, closedRows, clampedModifications = []) {
+    const changeLimitPercent = this.analysisResult?.changeLimitPercent || 5;
+    this.renderTable(this.elements.openSummary, openRows, 'open', clampedModifications, changeLimitPercent);
+    this.renderTable(this.elements.closedSummary, closedRows, 'closed', clampedModifications, changeLimitPercent);
   },
 
-  renderTable(container, rows, type) {
+  renderTable(container, rows, type, clampedModifications = [], changeLimitPercent = 5) {
     if (!container) return;
 
     container.innerHTML = '';
@@ -210,9 +220,34 @@ const AutotuneTab = {
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
+    // Create a lookup map for clamped modifications by RPM and Load for quick lookup
+    // Use precise matching: RPM (integer) and Load (3 decimal places)
+    const clampedMap = new Map();
+    clampedModifications.forEach(clamped => {
+      // Match by RPM (rounded to integer) and Load (3 decimal places)
+      const key = `${Math.round(clamped.rpm)}_${parseFloat(clamped.load).toFixed(3)}`;
+      clampedMap.set(key, clamped);
+    });
+
     const tbody = document.createElement('tbody');
     rows.forEach(row => {
       const tr = document.createElement('tr');
+      
+      // Check if this row was clamped (exceeded change limit)
+      // Match by RPM (rounded to integer) and Load (3 decimal places)
+      const rowKey = `${Math.round(row.rpm)}_${parseFloat(row.load).toFixed(3)}`;
+      const clampedInfo = clampedMap.get(rowKey);
+      const isClamped = clampedInfo && 
+        ((type === 'open' && clampedInfo.source === 'open') || 
+         (type === 'closed' && clampedInfo.source === 'closed'));
+      
+      // Highlight clamped rows (exceeded change limit)
+      if (isClamped) {
+        tr.style.backgroundColor = '#fff3cd'; // Light yellow background
+        tr.style.borderLeft = '4px solid #ffc107'; // Yellow left border
+        tr.title = `Change limit exceeded: Suggested ${clampedInfo.changePct.toFixed(1)}% change, clamped to ±${changeLimitPercent}%`;
+      }
+      
       const cells = type === 'open'
         ? [
           formatNumber(row.rpm, 0),
@@ -253,7 +288,8 @@ const AutotuneTab = {
       return;
     }
 
-    const filename = this.getOutputFileName();
+    const baseFileName = this.getOutputFileName();
+    const filename = this.addTimestampToFileName(baseFileName);
     try {
       const response = window.AutotuneEngine.downloadTune(
         this.analysisResult, 
@@ -286,6 +322,41 @@ const AutotuneTab = {
       return value;
     }
     return `${value}.tune`;
+  },
+
+  addTimestampToFileName(fileName) {
+    if (!fileName) {
+      return 'autotuned_tune.tune';
+    }
+
+    // Generate timestamp: YYYYMMDD_HHMMSS
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+
+    // Extract base name and extension
+    const lowerFileName = fileName.toLowerCase();
+    let baseName, extension;
+    
+    if (lowerFileName.endsWith('.tune')) {
+      baseName = fileName.slice(0, -5); // Remove '.tune'
+      extension = '.tune';
+    } else if (lowerFileName.endsWith('.json')) {
+      baseName = fileName.slice(0, -5); // Remove '.json'
+      extension = '.json';
+    } else {
+      // No extension, add .tune
+      baseName = fileName;
+      extension = '.tune';
+    }
+
+    // Add timestamp before extension
+    return `${baseName}_${timestamp}${extension}`;
   }
 };
 
