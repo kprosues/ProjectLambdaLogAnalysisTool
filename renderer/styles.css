@@ -996,6 +996,515 @@ body.dark-mode .tooltip-field-item label {
   color: white;
 }
 
+/* Fuel Base Heatmap Styles */
+.heatmap-description {
+  color: #666;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+body.dark-mode .heatmap-description {
+  color: #aaa;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.legend-label {
+  font-weight: 600;
+  color: #333;
+}
+
+body.dark-mode .legend-label {
+  color: #e0e0e0;
+}
+
+.legend-gradient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gradient-bar {
+  width: 200px;
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(to right, 
+    #f7fbff 0%, 
+    #c6dbef 20%, 
+    #6baed6 40%, 
+    #2171b5 60%, 
+    #08519c 80%, 
+    #08306b 100%
+  );
+  border: 1px solid #ccc;
+}
+
+body.dark-mode .gradient-bar {
+  border-color: #555;
+}
+
+.legend-min, .legend-max {
+  color: #666;
+  font-size: 12px;
+}
+
+body.dark-mode .legend-min,
+body.dark-mode .legend-max {
+  color: #aaa;
+}
+
+.heatmap-container {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.heatmap-table {
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 0 auto;
+}
+
+.heatmap-table th,
+.heatmap-table td {
+  border: 1px solid #ddd;
+  padding: 4px 6px;
+  text-align: center;
+  min-width: 42px;
+  max-width: 42px;
+  height: 28px;
+}
+
+body.dark-mode .heatmap-table th,
+body.dark-mode .heatmap-table td {
+  border-color: #444;
+}
+
+.heatmap-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+  position: sticky;
+  z-index: 1;
+}
+
+.heatmap-table thead th {
+  top: 0;
+}
+
+.heatmap-table th.row-header {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.heatmap-table th.corner-header {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+}
+
+body.dark-mode .heatmap-table th {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.heatmap-table td {
+  transition: transform 0.1s ease;
+  cursor: default;
+}
+
+.heatmap-table td:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Heatmap cell color classes - blue sequential scale */
+.heatmap-cell-0 {
+  background-color: #ffffff;
+  color: #666;
+}
+
+.heatmap-cell-1 {
+  background-color: #f7fbff;
+  color: #333;
+}
+
+.heatmap-cell-2 {
+  background-color: #deebf7;
+  color: #333;
+}
+
+.heatmap-cell-3 {
+  background-color: #c6dbef;
+  color: #333;
+}
+
+.heatmap-cell-4 {
+  background-color: #9ecae1;
+  color: #333;
+}
+
+.heatmap-cell-5 {
+  background-color: #6baed6;
+  color: #fff;
+}
+
+.heatmap-cell-6 {
+  background-color: #4292c6;
+  color: #fff;
+}
+
+.heatmap-cell-7 {
+  background-color: #2171b5;
+  color: #fff;
+}
+
+.heatmap-cell-8 {
+  background-color: #08519c;
+  color: #fff;
+}
+
+.heatmap-cell-9 {
+  background-color: #08306b;
+  color: #fff;
+}
+
+/* Dark mode adjustments for heatmap cells */
+body.dark-mode .heatmap-cell-0 {
+  background-color: #2d2d2d;
+  color: #888;
+}
+
+body.dark-mode .heatmap-cell-1 {
+  background-color: #1e3a4c;
+  color: #ccc;
+}
+
+body.dark-mode .heatmap-cell-2 {
+  background-color: #1e4460;
+  color: #ddd;
+}
+
+.heatmap-stats {
+  display: flex;
+  gap: 20px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #666;
+  flex-wrap: wrap;
+}
+
+body.dark-mode .heatmap-stats {
+  color: #aaa;
+}
+
+.heatmap-stats span {
+  background: #f5f5f5;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+body.dark-mode .heatmap-stats span {
+  background: #3a3a3a;
+}
+
+/* Fuel Change Table Styles */
+.fuel-change-description {
+  color: #666;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+body.dark-mode .fuel-change-description {
+  color: #aaa;
+}
+
+.fuel-change-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 20px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid #ccc;
+}
+
+body.dark-mode .legend-swatch {
+  border-color: #555;
+}
+
+/* Fuel change color swatches for legend */
+.fuel-decrease-high {
+  background-color: #d73027;
+}
+
+.fuel-decrease-low {
+  background-color: #fc8d59;
+}
+
+.fuel-no-change {
+  background-color: #f5f5f5;
+}
+
+body.dark-mode .fuel-no-change {
+  background-color: #3a3a3a;
+}
+
+.fuel-increase-low {
+  background-color: #91cf60;
+}
+
+.fuel-increase-high {
+  background-color: #1a9850;
+}
+
+.fuel-source-open {
+  background-color: #4292c6;
+}
+
+.fuel-source-closed {
+  background-color: #9e9ac8;
+}
+
+.fuel-change-container {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.fuel-change-table {
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 0 auto;
+}
+
+.fuel-change-table th,
+.fuel-change-table td {
+  border: 1px solid #ddd;
+  padding: 4px 5px;
+  text-align: center;
+  min-width: 48px;
+  max-width: 48px;
+  height: 32px;
+}
+
+body.dark-mode .fuel-change-table th,
+body.dark-mode .fuel-change-table td {
+  border-color: #444;
+}
+
+.fuel-change-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+  position: sticky;
+  z-index: 1;
+}
+
+.fuel-change-table thead th {
+  top: 0;
+}
+
+.fuel-change-table th.row-header {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.fuel-change-table th.corner-header {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+}
+
+body.dark-mode .fuel-change-table th {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.fuel-change-table td {
+  transition: transform 0.1s ease;
+  cursor: default;
+  font-weight: 500;
+}
+
+.fuel-change-table td:hover {
+  transform: scale(1.15);
+  z-index: 10;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Fuel change cell colors - diverging red-white-green scale */
+.fuel-cell-no-data {
+  background-color: #f5f5f5;
+  color: #999;
+}
+
+body.dark-mode .fuel-cell-no-data {
+  background-color: #2d2d2d;
+  color: #666;
+}
+
+/* Decrease (negative change) - red scale */
+.fuel-cell-decrease-5 {
+  background-color: #67001f;
+  color: #fff;
+}
+
+.fuel-cell-decrease-4 {
+  background-color: #b2182b;
+  color: #fff;
+}
+
+.fuel-cell-decrease-3 {
+  background-color: #d6604d;
+  color: #fff;
+}
+
+.fuel-cell-decrease-2 {
+  background-color: #f4a582;
+  color: #333;
+}
+
+.fuel-cell-decrease-1 {
+  background-color: #fddbc7;
+  color: #333;
+}
+
+/* No significant change */
+.fuel-cell-neutral {
+  background-color: #f7f7f7;
+  color: #666;
+}
+
+body.dark-mode .fuel-cell-neutral {
+  background-color: #3a3a3a;
+  color: #aaa;
+}
+
+/* Increase (positive change) - green scale */
+.fuel-cell-increase-1 {
+  background-color: #d9f0d3;
+  color: #333;
+}
+
+.fuel-cell-increase-2 {
+  background-color: #a6dba0;
+  color: #333;
+}
+
+.fuel-cell-increase-3 {
+  background-color: #5aae61;
+  color: #fff;
+}
+
+.fuel-cell-increase-4 {
+  background-color: #1b7837;
+  color: #fff;
+}
+
+.fuel-cell-increase-5 {
+  background-color: #00441b;
+  color: #fff;
+}
+
+/* Source-based coloring for combined table */
+.fuel-cell-source-open {
+  background-color: #c6dbef;
+  color: #333;
+}
+
+.fuel-cell-source-open.has-change {
+  background-color: #4292c6;
+  color: #fff;
+}
+
+.fuel-cell-source-closed {
+  background-color: #dadaeb;
+  color: #333;
+}
+
+.fuel-cell-source-closed.has-change {
+  background-color: #9e9ac8;
+  color: #fff;
+}
+
+body.dark-mode .fuel-cell-source-open {
+  background-color: #1e4a6e;
+  color: #ccc;
+}
+
+body.dark-mode .fuel-cell-source-open.has-change {
+  background-color: #2171b5;
+  color: #fff;
+}
+
+body.dark-mode .fuel-cell-source-closed {
+  background-color: #4a4a6e;
+  color: #ccc;
+}
+
+body.dark-mode .fuel-cell-source-closed.has-change {
+  background-color: #756bb1;
+  color: #fff;
+}
+
+.fuel-change-stats {
+  display: flex;
+  gap: 20px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #666;
+  flex-wrap: wrap;
+}
+
+body.dark-mode .fuel-change-stats {
+  color: #aaa;
+}
+
+.fuel-change-stats span {
+  background: #f5f5f5;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+body.dark-mode .fuel-change-stats span {
+  background: #3a3a3a;
+}
+
+/* Cell value display styling */
+.fuel-change-table td .cell-value {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.fuel-change-table td .cell-change {
+  font-size: 9px;
+  opacity: 0.85;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   header {
@@ -1014,6 +1523,27 @@ body.dark-mode .tooltip-field-item label {
 
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .heatmap-table th,
+  .heatmap-table td {
+    min-width: 32px;
+    max-width: 32px;
+    font-size: 9px;
+    padding: 2px 3px;
+  }
+  
+  .fuel-change-table th,
+  .fuel-change-table td {
+    min-width: 36px;
+    max-width: 36px;
+    font-size: 8px;
+    padding: 2px 3px;
+  }
+  
+  .fuel-change-legend {
+    font-size: 11px;
+    gap: 10px;
   }
 }
 

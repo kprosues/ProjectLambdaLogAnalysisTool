@@ -118,6 +118,11 @@
     let totalOpenSamples = 0;
     let totalClosedSamples = 0;
     let skippedRows = 0;
+    
+    // Initialize hit count matrix for heatmap visualization (tracks all valid data points)
+    const hitCounts = Array.from({ length: rpmAxis.length }, () => 
+      Array.from({ length: loadAxis.length }, () => 0)
+    );
 
     data.forEach(row => {
       const rpm = parseFloat(row['Engine Speed (rpm)']);
@@ -138,6 +143,9 @@
         skippedRows += 1;
         return;
       }
+
+      // Increment hit count for heatmap (track all valid data points regardless of loop state)
+      hitCounts[rpmIdx][loadIdx] += 1;
 
       // Get PE enable thresholds for current RPM (matching Python: tune.pe_enable_load_at_rpm(rpm))
       // pe_enable_load and pe_enable_tps are indexed by RPM axis (same as fuel_base)
@@ -292,6 +300,81 @@
       cloneTable[row.rpmIdx][row.loadIdx] = targetValue;
     });
 
+    // Build 2D tables for open-loop and closed-loop change visualization
+    // Each cell contains: { current, suggested, changePct, samples, source } or null if no data
+    const openChangeTable = Array.from({ length: rpmAxis.length }, () => 
+      Array.from({ length: loadAxis.length }, () => null)
+    );
+    const closedChangeTable = Array.from({ length: rpmAxis.length }, () => 
+      Array.from({ length: loadAxis.length }, () => null)
+    );
+    const openHitCounts = Array.from({ length: rpmAxis.length }, () => 
+      Array.from({ length: loadAxis.length }, () => 0)
+    );
+    const closedHitCounts = Array.from({ length: rpmAxis.length }, () => 
+      Array.from({ length: loadAxis.length }, () => 0)
+    );
+
+    // Populate open-loop change table
+    openSummary.forEach(row => {
+      const changePct = ((row.suggestedFuelBase - row.currentFuelBase) / row.currentFuelBase) * 100;
+      openChangeTable[row.rpmIdx][row.loadIdx] = {
+        current: row.currentFuelBase,
+        suggested: row.suggestedFuelBase,
+        changePct: changePct,
+        samples: row.samples,
+        meanErrorPct: row.meanErrorPct
+      };
+      openHitCounts[row.rpmIdx][row.loadIdx] = row.samples;
+    });
+
+    // Populate closed-loop change table
+    closedSummary.forEach(row => {
+      const changePct = ((row.suggestedFuelBase - row.currentFuelBase) / row.currentFuelBase) * 100;
+      closedChangeTable[row.rpmIdx][row.loadIdx] = {
+        current: row.currentFuelBase,
+        suggested: row.suggestedFuelBase,
+        changePct: changePct,
+        samples: row.samples,
+        meanTrim: row.meanTrim
+      };
+      closedHitCounts[row.rpmIdx][row.loadIdx] = row.samples;
+    });
+
+    // Build combined/final suggested table (showing what will be applied after change limits)
+    const suggestedTable = Array.from({ length: rpmAxis.length }, () => 
+      Array.from({ length: loadAxis.length }, () => null)
+    );
+    
+    for (let rpmIdx = 0; rpmIdx < rpmAxis.length; rpmIdx++) {
+      for (let loadIdx = 0; loadIdx < loadAxis.length; loadIdx++) {
+        const current = fuelBaseTable[rpmIdx][loadIdx];
+        const suggested = cloneTable[rpmIdx][loadIdx];
+        const changePct = current !== 0 ? ((suggested - current) / current) * 100 : 0;
+        const hasChange = Math.abs(changePct) > 0.01;
+        
+        // Determine source (open takes priority over closed)
+        let source = null;
+        let samples = 0;
+        if (openChangeTable[rpmIdx][loadIdx]) {
+          source = 'open';
+          samples = openChangeTable[rpmIdx][loadIdx].samples;
+        } else if (closedChangeTable[rpmIdx][loadIdx]) {
+          source = 'closed';
+          samples = closedChangeTable[rpmIdx][loadIdx].samples;
+        }
+        
+        suggestedTable[rpmIdx][loadIdx] = {
+          current: current,
+          suggested: suggested,
+          changePct: changePct,
+          hasChange: hasChange,
+          source: source,
+          samples: samples
+        };
+      }
+    }
+
     return {
       openSummary,
       closedSummary,
@@ -302,7 +385,18 @@
       minSamples,
       totalOpenSamples,
       totalClosedSamples,
-      skippedRows
+      skippedRows,
+      // Heatmap data for fuel_base coverage visualization
+      hitCounts,
+      rpmAxis,
+      loadAxis,
+      // Table-based change data for visualization
+      currentFuelBase: fuelBaseTable,
+      openChangeTable,
+      closedChangeTable,
+      openHitCounts,
+      closedHitCounts,
+      suggestedTable
     };
   }
 

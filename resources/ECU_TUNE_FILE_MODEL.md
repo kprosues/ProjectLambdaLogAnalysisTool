@@ -195,12 +195,16 @@ These ECU tune files are JSON-formatted calibration files for a JDM Subaru WRX S
 ### 6. WASTEGATE CONTROL
 **Purpose**: Control wastegate duty cycle to achieve boost targets
 
+**Important**: **Lower wastegate duty cycle results in less boost pressure. Higher wastegate duty cycle results in more boost pressure.** This relationship is fundamental to understanding boost control behavior.
+
 **Related Tables:**
 - `wastegate_enable` - Master enable for wastegate control (1 = enabled)
 - `wg_base` (%) - Base wastegate duty cycle table (8x8: RPM x TPS)
-  - Range: 0.0% (closed) to 80.5% (open)
+  - Range: 0.0% to 80.5%
+  - **Lower values = less boost, higher values = more boost**
 - `wg_max` (%) - Maximum wastegate duty cycle table (8x8: RPM x TPS)
   - Range: 0.0% to 90.6%
+  - **Lower values = less boost, higher values = more boost**
 - `wg_rpm_index` (rpm) - RPM breakpoints (same as boost_target_rpm_index)
 - `wg_tps_index` (%) - TPS breakpoints (same as boost_target_tps_index)
 
@@ -223,8 +227,10 @@ These ECU tune files are JSON-formatted calibration files for a JDM Subaru WRX S
 - `wg_secondary_enable` - Enable secondary wastegate (0 = disabled)
 
 **Boost Error Control**: When actual boost deviates from target boost, the error magnitude (in kPa) is used to look up the appropriate adjustment step from these tables. The `boost_error_index` provides shared breakpoints (20.3, 11.7, 5.3, 2.1 kPa) so all four step tables use the same error thresholds. Larger errors result in larger duty cycle adjustments.
+- **Overboost**: When actual boost exceeds target, duty cycle is **reduced** (via `wg_overboost_step`) to decrease boost pressure
+- **Underboost**: When actual boost is below target, duty cycle is **increased** (via `wg_underboost_step`) to increase boost pressure
 
-**Relationships**: Wastegate control is a closed-loop system that adjusts duty cycle to achieve `boost_target` while respecting `boost_limit`.
+**Relationships**: Wastegate control is a closed-loop system that adjusts duty cycle to achieve `boost_target` while respecting `boost_limit`. **Remember: lower duty cycle = less boost, higher duty cycle = more boost.** The system increases duty cycle when boost is too low and decreases duty cycle when boost is too high.
 
 ---
 
@@ -812,13 +818,18 @@ Target Boost Pressure
 Compare with Actual Boost → Calculate Boost Error (kPa)
     ↓
 [If Overboost] → Lookup wg_overboost_step using boost_error_index
+                 → REDUCE duty cycle (less duty = less boost)
 [If Underboost] → Lookup wg_underboost_step using boost_error_index
+                 → INCREASE duty cycle (more duty = more boost)
     ↓
 Adjust wg_base duty cycle by step amount
     ↓
 Respect boost_limit and wg_max
     ↓
 Final Wastegate Duty Cycle
+    ↓
+Lower duty = Less boost pressure
+Higher duty = More boost pressure
 ```
 
 ### 4. Idle Control Flow:

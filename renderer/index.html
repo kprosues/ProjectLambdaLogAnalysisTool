@@ -482,17 +482,73 @@
             Load a tune and datalog, then run the analysis to generate recommendations.
           </div>
         </section>
+        <!-- Fuel Base Coverage Heatmap -->
         <section class="anomaly-section">
-          <h2>Open-Loop Recommendations</h2>
-          <div class="table-container" id="autotune-openSummary">
-            <p class="empty-state">No analysis results yet.</p>
+          <h2>Fuel Base Table Coverage Heatmap</h2>
+          <p class="heatmap-description">This heatmap shows how many datalog samples fell into each cell of the fuel_base table. Darker colors indicate more data points. Cells with no data remain uncolored.</p>
+          <div class="heatmap-legend">
+            <span class="legend-label">Data Hits:</span>
+            <div class="legend-gradient">
+              <span class="legend-min">0</span>
+              <div class="gradient-bar"></div>
+              <span class="legend-max" id="heatmap-max-label">Max</span>
+            </div>
+          </div>
+          <div class="heatmap-container" id="autotune-heatmap">
+            <p class="empty-state">Run analysis to see fuel table coverage.</p>
           </div>
         </section>
+
+        <!-- Open-Loop Fuel Base Changes -->
         <section class="anomaly-section">
-          <h2>Closed-Loop Recommendations</h2>
-          <div class="table-container" id="autotune-closedSummary">
+          <h2>Open-Loop Fuel Base Changes</h2>
+          <p class="fuel-change-description">Suggested changes based on open-loop (PE mode) lambda analysis. Green cells indicate fuel should increase, red cells indicate fuel should decrease. Only cells meeting the minimum sample threshold are shown.</p>
+          <div class="fuel-change-legend">
+            <span class="legend-label">Change:</span>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-high"></span> Decrease &gt;3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-low"></span> Decrease 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Data / &lt;1%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-low"></span> Increase 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-high"></span> Increase &gt;3%</div>
+          </div>
+          <div class="fuel-change-container" id="autotune-openChangeTable">
             <p class="empty-state">No analysis results yet.</p>
           </div>
+          <div class="fuel-change-stats" id="autotune-openStats"></div>
+        </section>
+
+        <!-- Closed-Loop Fuel Base Changes -->
+        <section class="anomaly-section">
+          <h2>Closed-Loop Fuel Base Changes</h2>
+          <p class="fuel-change-description">Suggested changes based on closed-loop fuel trim analysis. Green cells indicate fuel should increase (positive trim), red cells indicate fuel should decrease (negative trim). Only cells meeting the minimum sample threshold are shown.</p>
+          <div class="fuel-change-legend">
+            <span class="legend-label">Change:</span>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-high"></span> Decrease &gt;3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-low"></span> Decrease 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Data / &lt;1%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-low"></span> Increase 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-high"></span> Increase &gt;3%</div>
+          </div>
+          <div class="fuel-change-container" id="autotune-closedChangeTable">
+            <p class="empty-state">No analysis results yet.</p>
+          </div>
+          <div class="fuel-change-stats" id="autotune-closedStats"></div>
+        </section>
+
+        <!-- Combined Suggested Fuel Base Table -->
+        <section class="anomaly-section">
+          <h2>Final Suggested Fuel Base Table</h2>
+          <p class="fuel-change-description">Combined view showing final suggested values after applying change limits. Open-loop changes take priority over closed-loop where both exist. Cells with changes are highlighted based on direction and magnitude.</p>
+          <div class="fuel-change-legend">
+            <span class="legend-label">Source:</span>
+            <div class="legend-item"><span class="legend-swatch fuel-source-open"></span> Open-Loop</div>
+            <div class="legend-item"><span class="legend-swatch fuel-source-closed"></span> Closed-Loop</div>
+            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Change</div>
+          </div>
+          <div class="fuel-change-container" id="autotune-suggestedTable">
+            <p class="empty-state">No analysis results yet.</p>
+          </div>
+          <div class="fuel-change-stats" id="autotune-suggestedStats"></div>
         </section>
       </div>
 
