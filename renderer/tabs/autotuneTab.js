@@ -11,8 +11,15 @@ const AutotuneTab = {
     runBtn: null,
     downloadBtn: null,
     message: null,
-    openSummary: null,
-    closedSummary: null
+    heatmap: null,
+    heatmapMaxLabel: null,
+    // Table-based fuel change displays
+    openChangeTable: null,
+    openStats: null,
+    closedChangeTable: null,
+    closedStats: null,
+    suggestedTable: null,
+    suggestedStats: null
   },
   analysisResult: null,
   baseTuneData: null,
@@ -28,8 +35,15 @@ const AutotuneTab = {
     this.elements.runBtn = document.getElementById('autotune-runBtn');
     this.elements.downloadBtn = document.getElementById('autotune-downloadBtn');
     this.elements.message = document.getElementById('autotune-message');
-    this.elements.openSummary = document.getElementById('autotune-openSummary');
-    this.elements.closedSummary = document.getElementById('autotune-closedSummary');
+    this.elements.heatmap = document.getElementById('autotune-heatmap');
+    this.elements.heatmapMaxLabel = document.getElementById('heatmap-max-label');
+    // Table-based fuel change displays
+    this.elements.openChangeTable = document.getElementById('autotune-openChangeTable');
+    this.elements.openStats = document.getElementById('autotune-openStats');
+    this.elements.closedChangeTable = document.getElementById('autotune-closedChangeTable');
+    this.elements.closedStats = document.getElementById('autotune-closedStats');
+    this.elements.suggestedTable = document.getElementById('autotune-suggestedTable');
+    this.elements.suggestedStats = document.getElementById('autotune-suggestedStats');
 
     if (this.elements.form) {
       this.elements.form.addEventListener('submit', (e) => {
@@ -147,7 +161,8 @@ const AutotuneTab = {
       const result = window.AutotuneEngine.analyze({ minSamples, changeLimit });
       if (result.error) {
         this.analysisResult = null;
-        this.renderSummary(null, null);
+        this.renderHeatmap(null, null, null);
+        this.renderFuelChangeTables(null);
         this.setMessage(result.error, 'error');
         return;
       }
@@ -156,7 +171,8 @@ const AutotuneTab = {
         ...result,
         outputFileName: this.getOutputFileName()
       };
-      this.renderSummary(result.openSummary, result.closedSummary, result.clampedModifications || []);
+      this.renderHeatmap(result.hitCounts, result.rpmAxis, result.loadAxis);
+      this.renderFuelChangeTables(result);
 
       const summaryMessage = [
         `Analysis complete. ${result.modificationsApplied || 0} cells updated.`,
@@ -167,114 +183,413 @@ const AutotuneTab = {
 
       this.setMessage(summaryMessage || 'Analysis complete.', 'success');
       this.toggleDownloadButton(true);
-
-      // Auto-download if output filename is provided (user entered a value in the field)
-      const outputNameValue = (this.elements.outputName?.value || '').trim();
-      if (outputNameValue) {
-        // User provided a custom filename, auto-download with timestamp
-        setTimeout(() => {
-          this.downloadTune();
-        }, 100); // Small delay to ensure UI updates
-      }
     } catch (error) {
       console.error('Autotune analysis error:', error);
       this.analysisResult = null;
-      this.renderSummary(null, null);
+      this.renderHeatmap(null, null, null);
+      this.renderFuelChangeTables(null);
       this.setMessage('An unexpected error occurred while running autotune.', 'error');
       this.toggleDownloadButton(false);
     }
   },
 
-  renderSummary(openRows, closedRows, clampedModifications = []) {
-    const changeLimitPercent = this.analysisResult?.changeLimitPercent || 5;
-    this.renderTable(this.elements.openSummary, openRows, 'open', clampedModifications, changeLimitPercent);
-    this.renderTable(this.elements.closedSummary, closedRows, 'closed', clampedModifications, changeLimitPercent);
+  renderFuelChangeTables(result) {
+    // Render open-loop change table
+    this.renderFuelChangeTable(
+      this.elements.openChangeTable,
+      this.elements.openStats,
+      result?.openChangeTable,
+      result?.rpmAxis,
+      result?.loadAxis,
+      'open'
+    );
+    
+    // Render closed-loop change table
+    this.renderFuelChangeTable(
+      this.elements.closedChangeTable,
+      this.elements.closedStats,
+      result?.closedChangeTable,
+      result?.rpmAxis,
+      result?.loadAxis,
+      'closed'
+    );
+    
+    // Render combined suggested table
+    this.renderSuggestedTable(
+      this.elements.suggestedTable,
+      this.elements.suggestedStats,
+      result?.suggestedTable,
+      result?.rpmAxis,
+      result?.loadAxis
+    );
   },
 
-  renderTable(container, rows, type, clampedModifications = [], changeLimitPercent = 5) {
+  renderFuelChangeTable(container, statsContainer, changeTable, rpmAxis, loadAxis, type) {
     if (!container) return;
 
     container.innerHTML = '';
-    if (!rows || rows.length === 0) {
+    if (statsContainer) statsContainer.innerHTML = '';
+
+    if (!changeTable || !rpmAxis || !loadAxis || !changeTable.length) {
       const empty = document.createElement('p');
       empty.className = 'empty-state';
-      empty.textContent = 'No recommendations available. Adjust your filters or run the analysis again.';
+      empty.textContent = 'No analysis results yet. Run analysis to see fuel base changes.';
       container.appendChild(empty);
       return;
     }
 
-    const table = document.createElement('table');
-    table.className = 'anomaly-table';
+    // Calculate statistics
+    let cellsWithChanges = 0;
+    let totalSamples = 0;
+    let maxChange = 0;
+    let sumChange = 0;
 
+    changeTable.forEach(row => {
+      row.forEach(cell => {
+        if (cell) {
+          cellsWithChanges++;
+          totalSamples += cell.samples;
+          sumChange += cell.changePct;
+          if (Math.abs(cell.changePct) > Math.abs(maxChange)) {
+            maxChange = cell.changePct;
+          }
+        }
+      });
+    });
+
+    // Create the table
+    const table = document.createElement('table');
+    table.className = 'fuel-change-table';
+
+    // Create header row with Load axis values
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    const headers = type === 'open'
-      ? ['RPM', 'Load', 'Samples', 'Mean Error (%)', 'Current Fuel Base', 'Suggested Fuel Base']
-      : ['RPM', 'Load', 'Samples', 'Mean Trim (%)', 'Current Fuel Base', 'Suggested Fuel Base'];
+    
+    const cornerTh = document.createElement('th');
+    cornerTh.className = 'corner-header';
+    cornerTh.textContent = 'RPM \\ Load';
+    cornerTh.title = 'Rows: RPM (rpm), Columns: Load (g/rev)';
+    headerRow.appendChild(cornerTh);
 
-    headers.forEach(text => {
+    loadAxis.forEach(load => {
       const th = document.createElement('th');
-      th.textContent = text;
+      th.textContent = load.toFixed(2);
+      th.title = `Load: ${load.toFixed(3)} g/rev`;
       headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
-    // Create a lookup map for clamped modifications by RPM and Load for quick lookup
-    // Use precise matching: RPM (integer) and Load (3 decimal places)
-    const clampedMap = new Map();
-    clampedModifications.forEach(clamped => {
-      // Match by RPM (rounded to integer) and Load (3 decimal places)
-      const key = `${Math.round(clamped.rpm)}_${parseFloat(clamped.load).toFixed(3)}`;
-      clampedMap.set(key, clamped);
-    });
-
+    // Create body with RPM rows
     const tbody = document.createElement('tbody');
-    rows.forEach(row => {
+    rpmAxis.forEach((rpm, rpmIdx) => {
       const tr = document.createElement('tr');
       
-      // Check if this row was clamped (exceeded change limit)
-      // Match by RPM (rounded to integer) and Load (3 decimal places)
-      const rowKey = `${Math.round(row.rpm)}_${parseFloat(row.load).toFixed(3)}`;
-      const clampedInfo = clampedMap.get(rowKey);
-      const isClamped = clampedInfo && 
-        ((type === 'open' && clampedInfo.source === 'open') || 
-         (type === 'closed' && clampedInfo.source === 'closed'));
-      
-      // Highlight clamped rows (exceeded change limit)
-      if (isClamped) {
-        tr.style.backgroundColor = '#fff3cd'; // Light yellow background
-        tr.style.borderLeft = '4px solid #ffc107'; // Yellow left border
-        tr.title = `Change limit exceeded: Suggested ${clampedInfo.changePct.toFixed(1)}% change, clamped to ±${changeLimitPercent}%`;
-      }
-      
-      const cells = type === 'open'
-        ? [
-          formatNumber(row.rpm, 0),
-          formatNumber(row.load, 3),
-          row.samples,
-          formatNumber(row.meanErrorPct, 2),
-          formatNumber(row.currentFuelBase, 2),
-          formatNumber(row.suggestedFuelBase, 2)
-        ]
-        : [
-          formatNumber(row.rpm, 0),
-          formatNumber(row.load, 3),
-          row.samples,
-          formatNumber(row.meanTrim, 2),
-          formatNumber(row.currentFuelBase, 2),
-          formatNumber(row.suggestedFuelBase, 2)
-        ];
-      cells.forEach(value => {
+      const rowTh = document.createElement('th');
+      rowTh.className = 'row-header';
+      rowTh.textContent = rpm.toFixed(0);
+      rowTh.title = `RPM: ${rpm.toFixed(0)}`;
+      tr.appendChild(rowTh);
+
+      loadAxis.forEach((load, loadIdx) => {
         const td = document.createElement('td');
-        td.textContent = value;
+        const cell = changeTable[rpmIdx][loadIdx];
+        
+        if (cell) {
+          // Show change percentage in cell
+          const changeSign = cell.changePct >= 0 ? '+' : '';
+          td.innerHTML = `<div class="cell-value">${cell.suggested.toFixed(1)}</div><div class="cell-change">${changeSign}${cell.changePct.toFixed(1)}%</div>`;
+          
+          // Build tooltip
+          const metricLabel = type === 'open' ? 'Lambda Error' : 'Mean Trim';
+          const metricValue = type === 'open' ? cell.meanErrorPct : cell.meanTrim;
+          td.title = `RPM: ${rpm.toFixed(0)}, Load: ${load.toFixed(3)} g/rev\n` +
+            `Current: ${cell.current.toFixed(2)}\n` +
+            `Suggested: ${cell.suggested.toFixed(2)}\n` +
+            `Change: ${changeSign}${cell.changePct.toFixed(2)}%\n` +
+            `${metricLabel}: ${metricValue?.toFixed(2) || 'N/A'}%\n` +
+            `Samples: ${cell.samples.toLocaleString()}`;
+          
+          // Apply color class based on change direction and magnitude
+          td.className = this.getFuelChangeColorClass(cell.changePct);
+        } else {
+          td.className = 'fuel-cell-no-data';
+          td.title = `RPM: ${rpm.toFixed(0)}, Load: ${load.toFixed(3)} g/rev\nNo data meeting threshold`;
+        }
+        
         tr.appendChild(td);
       });
+      
       tbody.appendChild(tr);
     });
-
     table.appendChild(tbody);
     container.appendChild(table);
+
+    // Add stats
+    if (statsContainer && cellsWithChanges > 0) {
+      const avgChange = sumChange / cellsWithChanges;
+      const totalCells = rpmAxis.length * loadAxis.length;
+      statsContainer.innerHTML = `
+        <span><strong>Cells with Changes:</strong> ${cellsWithChanges} / ${totalCells} (${((cellsWithChanges / totalCells) * 100).toFixed(1)}%)</span>
+        <span><strong>Total Samples:</strong> ${totalSamples.toLocaleString()}</span>
+        <span><strong>Avg Change:</strong> ${avgChange >= 0 ? '+' : ''}${avgChange.toFixed(2)}%</span>
+        <span><strong>Max Change:</strong> ${maxChange >= 0 ? '+' : ''}${maxChange.toFixed(2)}%</span>
+      `;
+    }
+  },
+
+  renderSuggestedTable(container, statsContainer, suggestedTable, rpmAxis, loadAxis) {
+    if (!container) return;
+
+    container.innerHTML = '';
+    if (statsContainer) statsContainer.innerHTML = '';
+
+    if (!suggestedTable || !rpmAxis || !loadAxis || !suggestedTable.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-state';
+      empty.textContent = 'No analysis results yet. Run analysis to see suggested fuel base table.';
+      container.appendChild(empty);
+      return;
+    }
+
+    // Calculate statistics
+    let cellsWithChanges = 0;
+    let openLoopCells = 0;
+    let closedLoopCells = 0;
+
+    suggestedTable.forEach(row => {
+      row.forEach(cell => {
+        if (cell && cell.hasChange) {
+          cellsWithChanges++;
+          if (cell.source === 'open') openLoopCells++;
+          if (cell.source === 'closed') closedLoopCells++;
+        }
+      });
+    });
+
+    // Create the table
+    const table = document.createElement('table');
+    table.className = 'fuel-change-table';
+
+    // Create header row with Load axis values
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    
+    const cornerTh = document.createElement('th');
+    cornerTh.className = 'corner-header';
+    cornerTh.textContent = 'RPM \\ Load';
+    cornerTh.title = 'Rows: RPM (rpm), Columns: Load (g/rev)';
+    headerRow.appendChild(cornerTh);
+
+    loadAxis.forEach(load => {
+      const th = document.createElement('th');
+      th.textContent = load.toFixed(2);
+      th.title = `Load: ${load.toFixed(3)} g/rev`;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Create body with RPM rows
+    const tbody = document.createElement('tbody');
+    rpmAxis.forEach((rpm, rpmIdx) => {
+      const tr = document.createElement('tr');
+      
+      const rowTh = document.createElement('th');
+      rowTh.className = 'row-header';
+      rowTh.textContent = rpm.toFixed(0);
+      rowTh.title = `RPM: ${rpm.toFixed(0)}`;
+      tr.appendChild(rowTh);
+
+      loadAxis.forEach((load, loadIdx) => {
+        const td = document.createElement('td');
+        const cell = suggestedTable[rpmIdx][loadIdx];
+        
+        if (cell) {
+          // Show suggested value and change
+          td.innerHTML = `<div class="cell-value">${cell.suggested.toFixed(1)}</div>`;
+          
+          if (cell.hasChange) {
+            const changeSign = cell.changePct >= 0 ? '+' : '';
+            td.innerHTML += `<div class="cell-change">${changeSign}${cell.changePct.toFixed(1)}%</div>`;
+          }
+          
+          // Build tooltip
+          td.title = `RPM: ${rpm.toFixed(0)}, Load: ${load.toFixed(3)} g/rev\n` +
+            `Current: ${cell.current.toFixed(2)}\n` +
+            `Suggested: ${cell.suggested.toFixed(2)}\n` +
+            (cell.hasChange ? `Change: ${cell.changePct >= 0 ? '+' : ''}${cell.changePct.toFixed(2)}%\n` : 'No change\n') +
+            (cell.source ? `Source: ${cell.source === 'open' ? 'Open-Loop' : 'Closed-Loop'}\n` : '') +
+            (cell.samples ? `Samples: ${cell.samples.toLocaleString()}` : '');
+          
+          // Apply color class based on source
+          if (cell.hasChange && cell.source) {
+            td.className = `fuel-cell-source-${cell.source} has-change`;
+          } else if (cell.source) {
+            td.className = `fuel-cell-source-${cell.source}`;
+          } else {
+            td.className = 'fuel-cell-neutral';
+          }
+        } else {
+          td.className = 'fuel-cell-neutral';
+          td.title = `RPM: ${rpm.toFixed(0)}, Load: ${load.toFixed(3)} g/rev`;
+        }
+        
+        tr.appendChild(td);
+      });
+      
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // Add stats
+    if (statsContainer) {
+      const totalCells = rpmAxis.length * loadAxis.length;
+      statsContainer.innerHTML = `
+        <span><strong>Total Cells Modified:</strong> ${cellsWithChanges} / ${totalCells}</span>
+        <span><strong>Open-Loop Changes:</strong> ${openLoopCells}</span>
+        <span><strong>Closed-Loop Changes:</strong> ${closedLoopCells}</span>
+      `;
+    }
+  },
+
+  getFuelChangeColorClass(changePct) {
+    if (!isFinite(changePct)) return 'fuel-cell-no-data';
+    
+    const absChange = Math.abs(changePct);
+    
+    if (absChange < 0.5) return 'fuel-cell-neutral';
+    
+    if (changePct < 0) {
+      // Decrease (negative change) - red scale
+      if (absChange >= 5) return 'fuel-cell-decrease-5';
+      if (absChange >= 4) return 'fuel-cell-decrease-4';
+      if (absChange >= 3) return 'fuel-cell-decrease-3';
+      if (absChange >= 2) return 'fuel-cell-decrease-2';
+      return 'fuel-cell-decrease-1';
+    } else {
+      // Increase (positive change) - green scale
+      if (absChange >= 5) return 'fuel-cell-increase-5';
+      if (absChange >= 4) return 'fuel-cell-increase-4';
+      if (absChange >= 3) return 'fuel-cell-increase-3';
+      if (absChange >= 2) return 'fuel-cell-increase-2';
+      return 'fuel-cell-increase-1';
+    }
+  },
+
+  renderHeatmap(hitCounts, rpmAxis, loadAxis) {
+    const container = this.elements.heatmap;
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (!hitCounts || !rpmAxis || !loadAxis || !hitCounts.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-state';
+      empty.textContent = 'No heatmap data available. Run analysis to see fuel table coverage.';
+      container.appendChild(empty);
+      return;
+    }
+
+    // Find max hit count for scaling
+    let maxHits = 0;
+    let totalHits = 0;
+    let cellsWithData = 0;
+    hitCounts.forEach(row => {
+      row.forEach(count => {
+        if (count > maxHits) maxHits = count;
+        totalHits += count;
+        if (count > 0) cellsWithData++;
+      });
+    });
+
+    // Update the legend max label
+    if (this.elements.heatmapMaxLabel) {
+      this.elements.heatmapMaxLabel.textContent = maxHits.toLocaleString();
+    }
+
+    // Create the heatmap table
+    const table = document.createElement('table');
+    table.className = 'heatmap-table';
+
+    // Create header row with Load axis values
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    
+    // Corner cell (RPM \ Load label)
+    const cornerTh = document.createElement('th');
+    cornerTh.className = 'corner-header';
+    cornerTh.textContent = 'RPM \\ Load';
+    cornerTh.title = 'Rows: RPM (rpm), Columns: Load (g/rev)';
+    headerRow.appendChild(cornerTh);
+
+    // Load axis headers (columns)
+    loadAxis.forEach(load => {
+      const th = document.createElement('th');
+      th.textContent = load.toFixed(2);
+      th.title = `Load: ${load.toFixed(3)} g/rev`;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Create body with RPM rows
+    const tbody = document.createElement('tbody');
+    rpmAxis.forEach((rpm, rpmIdx) => {
+      const tr = document.createElement('tr');
+      
+      // Row header (RPM value)
+      const rowTh = document.createElement('th');
+      rowTh.className = 'row-header';
+      rowTh.textContent = rpm.toFixed(0);
+      rowTh.title = `RPM: ${rpm.toFixed(0)}`;
+      tr.appendChild(rowTh);
+
+      // Data cells
+      loadAxis.forEach((load, loadIdx) => {
+        const td = document.createElement('td');
+        const hits = hitCounts[rpmIdx][loadIdx];
+        td.textContent = hits > 0 ? hits.toLocaleString() : '';
+        td.title = `RPM: ${rpm.toFixed(0)}, Load: ${load.toFixed(3)} g/rev\nData hits: ${hits.toLocaleString()}`;
+        
+        // Calculate color intensity (0-9 scale)
+        const colorClass = this.getHeatmapColorClass(hits, maxHits);
+        td.className = colorClass;
+        
+        tr.appendChild(td);
+      });
+      
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // Add stats summary
+    const stats = document.createElement('div');
+    stats.className = 'heatmap-stats';
+    const totalCells = rpmAxis.length * loadAxis.length;
+    const coveragePercent = ((cellsWithData / totalCells) * 100).toFixed(1);
+    stats.innerHTML = `
+      <span><strong>Total Data Points:</strong> ${totalHits.toLocaleString()}</span>
+      <span><strong>Cells with Data:</strong> ${cellsWithData} / ${totalCells} (${coveragePercent}%)</span>
+      <span><strong>Max Hits per Cell:</strong> ${maxHits.toLocaleString()}</span>
+    `;
+    container.appendChild(stats);
+  },
+
+  getHeatmapColorClass(hits, maxHits) {
+    if (hits === 0 || maxHits === 0) return 'heatmap-cell-0';
+    
+    // Use logarithmic scaling for better visualization of data distribution
+    // This helps when there's a wide range of hit counts
+    const logHits = Math.log10(hits + 1);
+    const logMax = Math.log10(maxHits + 1);
+    const ratio = logHits / logMax;
+    
+    // Map to 1-9 color classes (0 is reserved for no data)
+    const colorIndex = Math.min(9, Math.max(1, Math.ceil(ratio * 9)));
+    return `heatmap-cell-${colorIndex}`;
   },
 
   downloadTune() {
@@ -359,11 +674,4 @@ const AutotuneTab = {
     return `${baseName}_${timestamp}${extension}`;
   }
 };
-
-function formatNumber(value, decimals) {
-  if (!isFinite(value)) {
-    return '-';
-  }
-  return Number(value).toFixed(decimals);
-}
 
