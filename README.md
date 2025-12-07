@@ -34,6 +34,7 @@ A comprehensive desktop application built with Electron for analyzing ECU datalo
 
 - **Autotune Engine**: Analyze datalog data against tune files to generate fuel base adjustments
   - Open-loop (Power Enrichment) and closed-loop fueling analysis
+  - Weighted averaging strategy with configurable cell-centering filter
   - Suggested fuel base modifications with change limits
   - Export modified tune files with automatic timestamping
 - **Tune File Integration**: Load and analyze `.tune` files alongside datalog data
@@ -134,13 +135,20 @@ Navigate between analysis views using the tab buttons:
 1. Load both a datalog CSV file and a tune file (`.tune` or JSON)
 2. Navigate to the **Fueling** tab → **Autotune** section
 3. Configure parameters:
-   - **Min Samples**: Minimum data points per RPM/Load cell (default: 5)
+   - **Min Samples**: Minimum data points per RPM/Load cell (default: 150)
    - **Change Limit (%)**: Maximum allowed change from original (default: 5%)
+   - **Min Hit Weight (Cell Centering)**: Filter data by position within cells (default: 0.00)
+     - `0.00` = Include all data weighted by proximity to cell center
+     - `1.00` = Only exact center hits (very restrictive)
+     - Higher values = More aggressive filtering of edge data
+     - Uses bilinear weighting to calculate data point influence
    - **Base Tune File** (optional): Alternative tune file to modify
    - **Output Tune File Name**: Name for exported tune file
 4. Click "Run Analysis" to generate recommendations
 5. Review open-loop and closed-loop summary tables
 6. Download the modified tune file
+
+**Weighted Averaging Strategy**: Each data point receives a weight from 0.0 to 1.0 based on how close it is to the center of its RPM/Load cell. Data points at cell centers have maximum weight (1.0), while points at cell edges have minimum weight (0.0). The Min Hit Weight parameter filters out data points below the specified threshold, ensuring tune adjustments are based on data that accurately represents the center of each operating condition. This reduces the impact of transient data that briefly crosses cell boundaries.
 
 ## 🏗️ Project Structure
 

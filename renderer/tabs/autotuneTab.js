@@ -4,6 +4,8 @@ const AutotuneTab = {
     form: null,
     minu: null,
     changeLimit: null,
+    minHitWeight: null,
+    minHitWeightValue: null,
     outputName: null,
     baseTuneFile: null,
     clearBaseTune: null,
@@ -28,6 +30,8 @@ const AutotuneTab = {
     this.elements.form = document.getElementById('autotune-form');
     this.elements.minSamples = document.getElementById('autotune-minSamples');
     this.elements.changeLimit = document.getElementById('autotune-changeLimit');
+    this.elements.minHitWeight = document.getElementById('autotune-minHitWeight');
+    this.elements.minHitWeightValue = document.getElementById('autotune-minHitWeight-value');
     this.elements.outputName = document.getElementById('autotune-outputName');
     this.elements.baseTuneFile = document.getElementById('autotune-baseTuneFile');
     this.elements.clearBaseTune = document.getElementById('autotune-clearBaseTune');
@@ -76,6 +80,14 @@ const AutotuneTab = {
       this.elements.downloadBtn.addEventListener('click', (e) => {
         e.preventDefault();
         this.downloadTune();
+      });
+    }
+
+    // Update min hit weight display value when slider changes
+    if (this.elements.minHitWeight && this.elements.minHitWeightValue) {
+      this.elements.minHitWeight.addEventListener('input', () => {
+        const value = parseFloat(this.elements.minHitWeight.value);
+        this.elements.minHitWeightValue.textContent = value.toFixed(2);
       });
     }
   },
@@ -153,12 +165,13 @@ const AutotuneTab = {
 
     const minSamples = parseInt(this.elements.minSamples?.value || '150', 10) || 150;
     const changeLimit = parseFloat(this.elements.changeLimit?.value || '5') || 5;
+    const minHitWeight = parseFloat(this.elements.minHitWeight?.value || '0') || 0;
 
     this.setMessage('Running autotune analysis...', 'info');
     this.toggleDownloadButton(false);
 
     try {
-      const result = window.AutotuneEngine.analyze({ minSamples, changeLimit });
+      const result = window.AutotuneEngine.analyze({ minSamples, changeLimit, minHitWeight });
       if (result.error) {
         this.analysisResult = null;
         this.renderHeatmap(null, null, null);
@@ -178,6 +191,9 @@ const AutotuneTab = {
         `Analysis complete. ${result.modificationsApplied || 0} cells updated.`,
         result.clampedModifications?.length
           ? `${result.clampedModifications.length} cells were limited to ±${result.changeLimitPercent}% change.`
+          : null,
+        result.filteredByCenterWeight
+          ? `${result.filteredByCenterWeight} samples filtered by min hit weight (${result.minHitWeight?.toFixed(2)}).`
           : null
       ].filter(Boolean).join(' ');
 
