@@ -59,9 +59,72 @@
     });
   }
 
+  /**
+   * Calculate the "centered weight" of a data point within its bin.
+   * Returns a value from 0.0 (at bin edge) to 1.0 (at bin center).
+   * 
+   * @param {number} value - The actual value (rpm or load)
+   * @param {number} idx - The bin index
+   * @param {number[]} axis - The axis array
+   * @returns {number} Weight from 0.0 to 1.0
+   */
+  function calculateAxisWeight(value, idx, axis) {
+    if (!Array.isArray(axis) || axis.length < 2 || idx === null) {
+      return 1.0; // Default to full weight if axis is invalid
+    }
+    
+    // Handle edge cases for first and last bins
+    let lower, upper;
+    
+    if (idx === 0) {
+      // First bin: center is between axis[0] and axis[1]
+      lower = axis[0];
+      upper = axis[1];
+    } else if (idx >= axis.length - 1) {
+      // Last bin: center is between axis[len-2] and axis[len-1]
+      lower = axis[axis.length - 2];
+      upper = axis[axis.length - 1];
+    } else {
+      // Normal case: bin spans axis[idx] to axis[idx+1]
+      lower = axis[idx];
+      upper = axis[idx + 1];
+    }
+    
+    const binCenter = (lower + upper) / 2;
+    const halfWidth = (upper - lower) / 2;
+    
+    if (halfWidth <= 0) {
+      return 1.0; // Avoid division by zero
+    }
+    
+    const distanceFromCenter = Math.abs(value - binCenter);
+    const weight = Math.max(0.0, 1.0 - (distanceFromCenter / halfWidth));
+    
+    return weight;
+  }
+
+  /**
+   * Calculate the combined 2D weight for a data point in the RPM/Load grid.
+   * Uses multiplication of the two axis weights (bilinear weighting).
+   * 
+   * @param {number} rpm - RPM value
+   * @param {number} load - Load value
+   * @param {number} rpmIdx - RPM bin index
+   * @param {number} loadIdx - Load bin index
+   * @param {number[]} rpmAxis - RPM axis array
+   * @param {number[]} loadAxis - Load axis array
+   * @returns {number} Combined weight from 0.0 to 1.0
+   */
+  function calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis) {
+    const rpmWeight = calculateAxisWeight(rpm, rpmIdx, rpmAxis);
+    const loadWeight = calculateAxisWeight(load, loadIdx, loadAxis);
+    return rpmWeight * loadWeight;
+  }
+
   function analyze(options = {}) {
     const minSamples = Math.max(1, parseInt(options.minSamples || 5, 10));
     const changeLimit = Math.max(0, parseFloat(options.changeLimit || 5));
+    const minHitWeight = Math.max(0, Math.min(1, parseFloat(options.minHitWeight || 0)));
 
     if (!window.tuneFileParser || !window.tuneFileParser.isLoaded()) {
       return { error: 'Please load a tune file before running autotune.' };
@@ -118,6 +181,7 @@
     let totalOpenSamples = 0;
     let totalClosedSamples = 0;
     let skippedRows = 0;
+    let filteredByCenterWeight = 0;
     
     // Initialize hit count matrix for heatmap visualization (tracks all valid data points)
     const hitCounts = Array.from({ length: rpmAxis.length }, () => 
@@ -178,14 +242,24 @@
           return;
         }
         
+        // Calculate cell weight based on how centered the data point is
+        const cellWeight = calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis);
+        
+        // Filter by minimum hit weight threshold
+        if (cellWeight < minHitWeight) {
+          filteredByCenterWeight += 1;
+          return;
+        }
+        
         // Calculate lambda ratio (measured vs target)
         const ratio = lambdaActual / lambdaTarget;
         const key = `${rpmIdx}_${loadIdx}`;
         if (!openBins[key]) {
-          openBins[key] = { rpmIdx, loadIdx, samples: 0, sumRatio: 0 };
+          openBins[key] = { rpmIdx, loadIdx, samples: 0, totalWeight: 0, weightedSumRatio: 0 };
         }
         openBins[key].samples += 1;
-        openBins[key].sumRatio += ratio;
+        openBins[key].totalWeight += cellWeight;
+        openBins[key].weightedSumRatio += ratio * cellWeight;
         totalOpenSamples += 1;
       } else {
         // Closed loop: use fuel trims (STFT + LTFT)
@@ -197,12 +271,23 @@
           ? parseFloat(row['Fuel Trim - Long Term (%)']) 
           : 0.0;
         const combined = stft + ltft;
+        
+        // Calculate cell weight based on how centered the data point is
+        const cellWeight = calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis);
+        
+        // Filter by minimum hit weight threshold
+        if (cellWeight < minHitWeight) {
+          filteredByCenterWeight += 1;
+          return;
+        }
+        
         const key = `${rpmIdx}_${loadIdx}`;
         if (!closedBins[key]) {
-          closedBins[key] = { rpmIdx, loadIdx, samples: 0, sumTrim: 0 };
+          closedBins[key] = { rpmIdx, loadIdx, samples: 0, totalWeight: 0, weightedSumTrim: 0 };
         }
         closedBins[key].samples += 1;
-        closedBins[key].sumTrim += combined;
+        closedBins[key].totalWeight += cellWeight;
+        closedBins[key].weightedSumTrim += combined * cellWeight;
         totalClosedSamples += 1;
       }
     });
@@ -210,17 +295,21 @@
     const openSummary = Object.values(openBins)
       .filter(entry => entry.samples >= minSamples)
       .map(entry => {
-        const meanRatio = entry.sumRatio / entry.samples;
+        const weightedMeanRatio = entry.totalWeight > 0 
+          ? entry.weightedSumRatio / entry.totalWeight 
+          : 1.0;
+        const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
         const currentValue = fuelBaseTable[entry.rpmIdx][entry.loadIdx] || 0;
-        const suggested = currentValue * meanRatio;
+        const suggested = currentValue * weightedMeanRatio;
         return {
           rpmIdx: entry.rpmIdx,
           loadIdx: entry.loadIdx,
           rpm: rpmAxis[entry.rpmIdx],
           load: loadAxis[entry.loadIdx],
           samples: entry.samples,
-          meanRatio,
-          meanErrorPct: (meanRatio - 1) * 100,
+          avgWeight: avgWeight,
+          meanRatio: weightedMeanRatio,
+          meanErrorPct: (weightedMeanRatio - 1) * 100,
           currentFuelBase: currentValue,
           suggestedFuelBase: suggested
         };
@@ -230,16 +319,20 @@
     const closedSummary = Object.values(closedBins)
       .filter(entry => entry.samples >= minSamples)
       .map(entry => {
-        const meanTrim = entry.sumTrim / entry.samples;
+        const weightedMeanTrim = entry.totalWeight > 0 
+          ? entry.weightedSumTrim / entry.totalWeight 
+          : 0.0;
+        const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
         const currentValue = fuelBaseTable[entry.rpmIdx][entry.loadIdx] || 0;
-        const suggested = currentValue * (1 + meanTrim / 100);
+        const suggested = currentValue * (1 + weightedMeanTrim / 100);
         return {
           rpmIdx: entry.rpmIdx,
           loadIdx: entry.loadIdx,
           rpm: rpmAxis[entry.rpmIdx],
           load: loadAxis[entry.loadIdx],
           samples: entry.samples,
-          meanTrim,
+          avgWeight: avgWeight,
+          meanTrim: weightedMeanTrim,
           currentFuelBase: currentValue,
           suggestedFuelBase: suggested
         };
@@ -383,9 +476,11 @@
       fuelBaseStrings: formatFuelBaseTable(cloneTable),
       changeLimitPercent: changeLimit,
       minSamples,
+      minHitWeight,
       totalOpenSamples,
       totalClosedSamples,
       skippedRows,
+      filteredByCenterWeight,
       // Heatmap data for fuel_base coverage visualization
       hitCounts,
       rpmAxis,

@@ -508,6 +508,16 @@
               <input type="number" id="autotune-changeLimit" min="0" step="0.5" value="5">
             </div>
             <div class="form-field">
+              <label for="autotune-minHitWeight">Min Hit Weight (Cell Centering)</label>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="range" id="autotune-minHitWeight" min="0" max="1" step="0.05" value="0" style="flex: 1;">
+                <span id="autotune-minHitWeight-value" style="min-width: 50px; text-align: right; font-weight: bold;">0.00</span>
+              </div>
+              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                Filter data by cell position. 0 = include all hits weighted by position, 1 = only exact center hits. Higher values filter out edge data more aggressively.
+              </small>
+            </div>
+            <div class="form-field">
               <label for="autotune-baseTuneFile">Base Tune File (Optional)</label>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <input type="file" id="autotune-baseTuneFile" accept=".json,.tune" style="flex: 1;">
