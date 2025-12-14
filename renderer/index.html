@@ -497,8 +497,18 @@
 
         <!-- Autotune Section -->
         <section class="statistics-panel" style="margin-top: 40px; border-top: 2px solid #e0e0e0; padding-top: 30px;">
-          <h2>Autotune Fuel Base Adjustments</h2>
+          <h2>Autotune Adjustments</h2>
           <form id="autotune-form" class="form-grid">
+            <div class="form-field">
+              <label for="autotune-mode">Tuning Mode</label>
+              <select id="autotune-mode">
+                <option value="fuel_base">Base Fuel Table</option>
+                <option value="maf_scale">MAF Calibration</option>
+              </select>
+              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                Choose which table to tune. Base Fuel adjusts fuel_base using RPM/Load cells. MAF Calibration adjusts maf_scale using voltage bins.
+              </small>
+            </div>
             <div class="form-field">
               <label for="autotune-minSamples">Min Samples per Cell</label>
               <input type="number" id="autotune-minSamples" min="1" value="150">
@@ -542,6 +552,8 @@
           </div>
         </section>
 
+        <!-- Fuel Base Sections (shown when mode = fuel_base) -->
+        <div id="autotune-fuelbase-sections">
         <!-- Fuel Base Coverage Heatmap -->
         <section class="anomaly-section">
           <h2>Fuel Base Table Coverage Heatmap</h2>
@@ -610,7 +622,10 @@
           </div>
           <div class="fuel-change-stats" id="autotune-suggestedStats"></div>
         </section>
+        </div><!-- end autotune-fuelbase-sections -->
 
+        <!-- MAF Calibration Sections (shown when mode = maf_scale) -->
+        <div id="autotune-maf-sections">
         <!-- MAF Calibration Adjustments -->
         <section class="anomaly-section">
           <h2>MAF Calibration Adjustments</h2>
@@ -620,6 +635,7 @@
           </div>
           <div class="fuel-change-stats" id="autotune-mafStats"></div>
         </section>
+        </div><!-- end autotune-maf-sections -->
       </div>
 
       <!-- Fuel Trim Tab (Combined Short Term + Long Term) -->

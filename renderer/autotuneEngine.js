@@ -1,15 +1,18 @@
 // AutotuneEngine: analyze log data against tune fuel_base table and apply adjustments
 (function() {
-  const REQUIRED_COLUMNS = [
+  // Base columns required for both modes
+  const BASE_REQUIRED_COLUMNS = [
     'Engine Speed (rpm)',
     'Load (MAF) (g/rev)',
     'Air/Fuel Sensor #1 (λ)',
     'Power Mode - Fuel Ratio Target (λ)',
     'Fuel Trim - Short Term (%)',
     'Fuel Trim - Long Term (%)',
-    'Throttle Position (%)',
-    'Mass Air Flow Voltage (V)'
+    'Throttle Position (%)'
   ];
+
+  // Additional column required for MAF scaling mode
+  const MAF_REQUIRED_COLUMN = 'Mass Air Flow Voltage (V)';
 
   function axisIndex(value, axis, clamp = true) {
     // Match Python axis_index implementation exactly:
@@ -166,7 +169,14 @@
     return rpmWeight * loadWeight;
   }
 
+  // Valid tuning modes
+  const TUNING_MODES = {
+    FUEL_BASE: 'fuel_base',
+    MAF_SCALE: 'maf_scale'
+  };
+
   function analyze(options = {}) {
+    const mode = options.mode === TUNING_MODES.MAF_SCALE ? TUNING_MODES.MAF_SCALE : TUNING_MODES.FUEL_BASE;
     const minSamples = Math.max(1, parseInt(options.minSamples || 5, 10));
     const changeLimit = Math.max(0, parseFloat(options.changeLimit || 5));
     const minHitWeight = Math.max(0, Math.min(1, parseFloat(options.minHitWeight || 0)));
@@ -190,7 +200,13 @@
       return { error: 'Unable to determine datalog columns.' };
     }
 
-    const missingColumns = REQUIRED_COLUMNS.filter(col => !columns.includes(col));
+    // Build required columns based on mode
+    const requiredColumns = [...BASE_REQUIRED_COLUMNS];
+    if (mode === TUNING_MODES.MAF_SCALE) {
+      requiredColumns.push(MAF_REQUIRED_COLUMN);
+    }
+
+    const missingColumns = requiredColumns.filter(col => !columns.includes(col));
     if (missingColumns.length > 0) {
       return { error: `The datalog is missing required columns: ${missingColumns.join(', ')}` };
     }
@@ -215,16 +231,19 @@
       return { error: 'PE enable tables do not match RPM axis length.' };
     }
 
-    if (!mafScale.length) {
-      return { error: 'Tune file is missing the maf_scale table.' };
-    }
+    // MAF-specific validation (only for MAF mode)
+    if (mode === TUNING_MODES.MAF_SCALE) {
+      if (!mafScale.length) {
+        return { error: 'Tune file is missing the maf_scale table.' };
+      }
 
-    if (!mafVoltageAxis.length) {
-      return { error: 'Unable to determine MAF voltage axis from tune file.' };
-    }
+      if (!mafVoltageAxis.length) {
+        return { error: 'Unable to determine MAF voltage axis from tune file.' };
+      }
 
-    if (mafVoltageAxis.length !== mafScale.length) {
-      return { error: 'MAF voltage axis length does not match maf_scale table length.' };
+      if (mafVoltageAxis.length !== mafScale.length) {
+        return { error: 'MAF voltage axis length does not match maf_scale table length.' };
+      }
     }
 
     // Process all rows: filter valid data, classify loop state, then bin by RPM/Load
@@ -243,20 +262,24 @@
     let filteredByCenterWeight = 0;
     
     // Initialize hit count matrix for heatmap visualization (tracks all valid data points)
-    const hitCounts = Array.from({ length: rpmAxis.length }, () => 
-      Array.from({ length: loadAxis.length }, () => 0)
-    );
+    // Only needed for fuel_base mode
+    const hitCounts = mode === TUNING_MODES.FUEL_BASE
+      ? Array.from({ length: rpmAxis.length }, () => Array.from({ length: loadAxis.length }, () => 0))
+      : null;
     
-    // MAF-specific accumulators
-    const mafOpenBins = {};
-    const mafClosedBins = {};
-    const mafHitCounts = Array.from({ length: mafVoltageAxis.length }, () => 0);
+    // MAF-specific accumulators (only for maf_scale mode)
+    const mafOpenBins = mode === TUNING_MODES.MAF_SCALE ? {} : null;
+    const mafClosedBins = mode === TUNING_MODES.MAF_SCALE ? {} : null;
+    const mafHitCounts = mode === TUNING_MODES.MAF_SCALE
+      ? Array.from({ length: mafVoltageAxis.length }, () => 0)
+      : null;
     let totalMafOpenSamples = 0;
     let totalMafClosedSamples = 0;
     let rowsMissingMafVoltage = 0;
     let mafFilteredByCenterWeight = 0;
     
     function accumulateMafOpenSample(idx, weight, ratio) {
+      if (mode !== TUNING_MODES.MAF_SCALE || !mafOpenBins) return;
       if (idx === null || weight === null) {
         return;
       }
@@ -276,6 +299,7 @@
     }
     
     function accumulateMafClosedSample(idx, weight, trim) {
+      if (mode !== TUNING_MODES.MAF_SCALE || !mafClosedBins) return;
       if (idx === null || weight === null) {
         return;
       }
@@ -315,22 +339,28 @@
         return;
       }
       
+      // MAF voltage processing (only for maf_scale mode)
       let mafIdx = null;
       let mafWeight = null;
-      if (isFinite(mafVoltage)) {
-        mafIdx = axisIndex(mafVoltage, mafVoltageAxis);
-        if (mafIdx !== null) {
-          mafHitCounts[mafIdx] += 1;
-          mafWeight = calculateAxisWeight(mafVoltage, mafIdx, mafVoltageAxis);
+      if (mode === TUNING_MODES.MAF_SCALE) {
+        if (isFinite(mafVoltage)) {
+          mafIdx = axisIndex(mafVoltage, mafVoltageAxis);
+          if (mafIdx !== null) {
+            mafHitCounts[mafIdx] += 1;
+            mafWeight = calculateAxisWeight(mafVoltage, mafIdx, mafVoltageAxis);
+          } else {
+            rowsMissingMafVoltage += 1;
+          }
         } else {
           rowsMissingMafVoltage += 1;
         }
-      } else {
-        rowsMissingMafVoltage += 1;
       }
 
       // Increment hit count for heatmap (track all valid data points regardless of loop state)
-      hitCounts[rpmIdx][loadIdx] += 1;
+      // Only for fuel_base mode
+      if (mode === TUNING_MODES.FUEL_BASE && hitCounts) {
+        hitCounts[rpmIdx][loadIdx] += 1;
+      }
 
       // Get PE enable thresholds for current RPM (matching Python: tune.pe_enable_load_at_rpm(rpm))
       // pe_enable_load and pe_enable_tps are indexed by RPM axis (same as fuel_base)
@@ -370,27 +400,29 @@
         // Calculate lambda ratio (measured vs target)
         const ratio = lambdaActual / lambdaTarget;
         
-        // Accumulate MAF samples independently of fuel-base cell weight
-        // MAF uses its own 1D weight based on voltage bin centering
+        // Accumulate MAF samples (only in MAF mode)
         accumulateMafOpenSample(mafIdx, mafWeight, ratio);
         
-        // Calculate cell weight based on how centered the data point is in RPM/Load grid
-        const cellWeight = calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis);
-        
-        // Filter by minimum hit weight threshold for fuel-base accumulation
-        if (cellWeight < minHitWeight) {
-          filteredByCenterWeight += 1;
-          return;
+        // Accumulate fuel-base samples (only in fuel_base mode)
+        if (mode === TUNING_MODES.FUEL_BASE) {
+          // Calculate cell weight based on how centered the data point is in RPM/Load grid
+          const cellWeight = calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis);
+          
+          // Filter by minimum hit weight threshold for fuel-base accumulation
+          if (cellWeight < minHitWeight) {
+            filteredByCenterWeight += 1;
+            return;
+          }
+          
+          const key = `${rpmIdx}_${loadIdx}`;
+          if (!openBins[key]) {
+            openBins[key] = { rpmIdx, loadIdx, samples: 0, totalWeight: 0, weightedSumRatio: 0 };
+          }
+          openBins[key].samples += 1;
+          openBins[key].totalWeight += cellWeight;
+          openBins[key].weightedSumRatio += ratio * cellWeight;
+          totalOpenSamples += 1;
         }
-        
-        const key = `${rpmIdx}_${loadIdx}`;
-        if (!openBins[key]) {
-          openBins[key] = { rpmIdx, loadIdx, samples: 0, totalWeight: 0, weightedSumRatio: 0 };
-        }
-        openBins[key].samples += 1;
-        openBins[key].totalWeight += cellWeight;
-        openBins[key].weightedSumRatio += ratio * cellWeight;
-        totalOpenSamples += 1;
       } else {
         // Closed loop: use fuel trims (STFT + LTFT)
         // Fill NaN with 0.0 (matching Python: logs["stft"] = logs["stft"].fillna(0.0))
@@ -402,366 +434,405 @@
           : 0.0;
         const combined = stft + ltft;
         
-        // Accumulate MAF samples independently of fuel-base cell weight
-        // MAF uses its own 1D weight based on voltage bin centering
+        // Accumulate MAF samples (only in MAF mode)
         accumulateMafClosedSample(mafIdx, mafWeight, combined);
         
-        // Calculate cell weight based on how centered the data point is in RPM/Load grid
-        const cellWeight = calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis);
-        
-        // Filter by minimum hit weight threshold for fuel-base accumulation
-        if (cellWeight < minHitWeight) {
-          filteredByCenterWeight += 1;
+        // Accumulate fuel-base samples (only in fuel_base mode)
+        if (mode === TUNING_MODES.FUEL_BASE) {
+          // Calculate cell weight based on how centered the data point is in RPM/Load grid
+          const cellWeight = calculateCellWeight(rpm, load, rpmIdx, loadIdx, rpmAxis, loadAxis);
+          
+          // Filter by minimum hit weight threshold for fuel-base accumulation
+          if (cellWeight < minHitWeight) {
+            filteredByCenterWeight += 1;
+            return;
+          }
+          
+          const key = `${rpmIdx}_${loadIdx}`;
+          if (!closedBins[key]) {
+            closedBins[key] = { rpmIdx, loadIdx, samples: 0, totalWeight: 0, weightedSumTrim: 0 };
+          }
+          closedBins[key].samples += 1;
+          closedBins[key].totalWeight += cellWeight;
+          closedBins[key].weightedSumTrim += combined * cellWeight;
+          totalClosedSamples += 1;
+        }
+      }
+    });
+
+    // Fuel-base summaries (only for fuel_base mode)
+    let openSummary = [];
+    let closedSummary = [];
+    if (mode === TUNING_MODES.FUEL_BASE) {
+      openSummary = Object.values(openBins)
+        .filter(entry => entry.samples >= minSamples)
+        .map(entry => {
+          const weightedMeanRatio = entry.totalWeight > 0 
+            ? entry.weightedSumRatio / entry.totalWeight 
+            : 1.0;
+          const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
+          const currentValue = fuelBaseTable[entry.rpmIdx][entry.loadIdx] || 0;
+          const suggested = currentValue * weightedMeanRatio;
+          return {
+            rpmIdx: entry.rpmIdx,
+            loadIdx: entry.loadIdx,
+            rpm: rpmAxis[entry.rpmIdx],
+            load: loadAxis[entry.loadIdx],
+            samples: entry.samples,
+            avgWeight: avgWeight,
+            meanRatio: weightedMeanRatio,
+            meanErrorPct: (weightedMeanRatio - 1) * 100,
+            currentFuelBase: currentValue,
+            suggestedFuelBase: suggested
+          };
+        })
+        .sort((a, b) => Math.abs(b.meanErrorPct) - Math.abs(a.meanErrorPct));
+
+      closedSummary = Object.values(closedBins)
+        .filter(entry => entry.samples >= minSamples)
+        .map(entry => {
+          const weightedMeanTrim = entry.totalWeight > 0 
+            ? entry.weightedSumTrim / entry.totalWeight 
+            : 0.0;
+          const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
+          const currentValue = fuelBaseTable[entry.rpmIdx][entry.loadIdx] || 0;
+          const suggested = currentValue * (1 + weightedMeanTrim / 100);
+          return {
+            rpmIdx: entry.rpmIdx,
+            loadIdx: entry.loadIdx,
+            rpm: rpmAxis[entry.rpmIdx],
+            load: loadAxis[entry.loadIdx],
+            samples: entry.samples,
+            avgWeight: avgWeight,
+            meanTrim: weightedMeanTrim,
+            currentFuelBase: currentValue,
+            suggestedFuelBase: suggested
+          };
+        })
+        .sort((a, b) => Math.abs(b.meanTrim) - Math.abs(a.meanTrim));
+    }
+
+    // MAF summaries (only for maf_scale mode)
+    let mafOpenSummary = [];
+    let mafClosedSummary = [];
+    if (mode === TUNING_MODES.MAF_SCALE && mafOpenBins && mafClosedBins) {
+      mafOpenSummary = Object.values(mafOpenBins)
+        .filter(entry => entry.samples >= minSamples)
+        .map(entry => {
+          const weightedMeanRatio = entry.totalWeight > 0
+            ? entry.weightedSumRatio / entry.totalWeight
+            : 1.0;
+          const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
+          const currentValue = mafScale[entry.idx] || 0;
+          const suggestedValue = currentValue * weightedMeanRatio;
+          return {
+            idx: entry.idx,
+            voltage: mafVoltageAxis[entry.idx],
+            samples: entry.samples,
+            avgWeight,
+            meanRatio: weightedMeanRatio,
+            meanErrorPct: (weightedMeanRatio - 1) * 100,
+            currentGs: currentValue,
+            suggestedGs: suggestedValue
+          };
+        })
+        .sort((a, b) => Math.abs(b.meanErrorPct) - Math.abs(a.meanErrorPct));
+
+      mafClosedSummary = Object.values(mafClosedBins)
+        .filter(entry => entry.samples >= minSamples)
+        .map(entry => {
+          const weightedMeanTrim = entry.totalWeight > 0
+            ? entry.weightedSumTrim / entry.totalWeight
+            : 0.0;
+          const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
+          const currentValue = mafScale[entry.idx] || 0;
+          const suggestedValue = currentValue * (1 + weightedMeanTrim / 100);
+          return {
+            idx: entry.idx,
+            voltage: mafVoltageAxis[entry.idx],
+            samples: entry.samples,
+            avgWeight,
+            meanTrim: weightedMeanTrim,
+            currentGs: currentValue,
+            suggestedGs: suggestedValue
+          };
+        })
+        .sort((a, b) => Math.abs(b.meanTrim) - Math.abs(a.meanTrim));
+    }
+
+    // Fuel-base modifications (only for fuel_base mode)
+    let cloneTable = null;
+    let modifications = new Map();
+    let clampedDetails = [];
+
+    if (mode === TUNING_MODES.FUEL_BASE) {
+      cloneTable = clone2DArray(fuelBaseTable);
+
+      closedSummary.forEach(row => {
+        const key = `${row.rpmIdx}_${row.loadIdx}`;
+        modifications.set(key, { ...row, source: 'closed' });
+      });
+
+      openSummary.forEach(row => {
+        const key = `${row.rpmIdx}_${row.loadIdx}`;
+        modifications.set(key, { ...row, source: 'open' });
+      });
+
+      // Apply modifications with change limit (based on source/analysis tune file values)
+      // This ensures idempotency: change limits are always based on the analysis tune file,
+      // not the base tune file (if one is provided for modification)
+      modifications.forEach(row => {
+        // Get the original value from the analysis tune file (for change limit baseline)
+        const sourceOriginal = fuelBaseTable[row.rpmIdx][row.loadIdx] || 0;
+        if (!isFinite(sourceOriginal) || sourceOriginal === 0) {
+          // Cannot compute meaningful change for zero or invalid values
           return;
         }
         
-        const key = `${rpmIdx}_${loadIdx}`;
-        if (!closedBins[key]) {
-          closedBins[key] = { rpmIdx, loadIdx, samples: 0, totalWeight: 0, weightedSumTrim: 0 };
-        }
-        closedBins[key].samples += 1;
-        closedBins[key].totalWeight += cellWeight;
-        closedBins[key].weightedSumTrim += combined * cellWeight;
-        totalClosedSamples += 1;
-      }
-    });
-
-    const openSummary = Object.values(openBins)
-      .filter(entry => entry.samples >= minSamples)
-      .map(entry => {
-        const weightedMeanRatio = entry.totalWeight > 0 
-          ? entry.weightedSumRatio / entry.totalWeight 
-          : 1.0;
-        const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
-        const currentValue = fuelBaseTable[entry.rpmIdx][entry.loadIdx] || 0;
-        const suggested = currentValue * weightedMeanRatio;
-        return {
-          rpmIdx: entry.rpmIdx,
-          loadIdx: entry.loadIdx,
-          rpm: rpmAxis[entry.rpmIdx],
-          load: loadAxis[entry.loadIdx],
-          samples: entry.samples,
-          avgWeight: avgWeight,
-          meanRatio: weightedMeanRatio,
-          meanErrorPct: (weightedMeanRatio - 1) * 100,
-          currentFuelBase: currentValue,
-          suggestedFuelBase: suggested
-        };
-      })
-      .sort((a, b) => Math.abs(b.meanErrorPct) - Math.abs(a.meanErrorPct));
-
-    const closedSummary = Object.values(closedBins)
-      .filter(entry => entry.samples >= minSamples)
-      .map(entry => {
-        const weightedMeanTrim = entry.totalWeight > 0 
-          ? entry.weightedSumTrim / entry.totalWeight 
-          : 0.0;
-        const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
-        const currentValue = fuelBaseTable[entry.rpmIdx][entry.loadIdx] || 0;
-        const suggested = currentValue * (1 + weightedMeanTrim / 100);
-        return {
-          rpmIdx: entry.rpmIdx,
-          loadIdx: entry.loadIdx,
-          rpm: rpmAxis[entry.rpmIdx],
-          load: loadAxis[entry.loadIdx],
-          samples: entry.samples,
-          avgWeight: avgWeight,
-          meanTrim: weightedMeanTrim,
-          currentFuelBase: currentValue,
-          suggestedFuelBase: suggested
-        };
-      })
-      .sort((a, b) => Math.abs(b.meanTrim) - Math.abs(a.meanTrim));
-
-    const mafOpenSummary = Object.values(mafOpenBins)
-      .filter(entry => entry.samples >= minSamples)
-      .map(entry => {
-        const weightedMeanRatio = entry.totalWeight > 0
-          ? entry.weightedSumRatio / entry.totalWeight
-          : 1.0;
-        const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
-        const currentValue = mafScale[entry.idx] || 0;
-        const suggestedValue = currentValue * weightedMeanRatio;
-        return {
-          idx: entry.idx,
-          voltage: mafVoltageAxis[entry.idx],
-          samples: entry.samples,
-          avgWeight,
-          meanRatio: weightedMeanRatio,
-          meanErrorPct: (weightedMeanRatio - 1) * 100,
-          currentGs: currentValue,
-          suggestedGs: suggestedValue
-        };
-      })
-      .sort((a, b) => Math.abs(b.meanErrorPct) - Math.abs(a.meanErrorPct));
-
-    const mafClosedSummary = Object.values(mafClosedBins)
-      .filter(entry => entry.samples >= minSamples)
-      .map(entry => {
-        const weightedMeanTrim = entry.totalWeight > 0
-          ? entry.weightedSumTrim / entry.totalWeight
-          : 0.0;
-        const avgWeight = entry.samples > 0 ? entry.totalWeight / entry.samples : 0;
-        const currentValue = mafScale[entry.idx] || 0;
-        const suggestedValue = currentValue * (1 + weightedMeanTrim / 100);
-        return {
-          idx: entry.idx,
-          voltage: mafVoltageAxis[entry.idx],
-          samples: entry.samples,
-          avgWeight,
-          meanTrim: weightedMeanTrim,
-          currentGs: currentValue,
-          suggestedGs: suggestedValue
-        };
-      })
-      .sort((a, b) => Math.abs(b.meanTrim) - Math.abs(a.meanTrim));
-
-    const cloneTable = clone2DArray(fuelBaseTable);
-    const modifications = new Map();
-
-    closedSummary.forEach(row => {
-      const key = `${row.rpmIdx}_${row.loadIdx}`;
-      modifications.set(key, { ...row, source: 'closed' });
-    });
-
-    openSummary.forEach(row => {
-      const key = `${row.rpmIdx}_${row.loadIdx}`;
-      modifications.set(key, { ...row, source: 'open' });
-    });
-
-    // Apply modifications with change limit (based on source/analysis tune file values)
-    // This ensures idempotency: change limits are always based on the analysis tune file,
-    // not the base tune file (if one is provided for modification)
-    const clampedDetails = [];
-    modifications.forEach(row => {
-      // Get the original value from the analysis tune file (for change limit baseline)
-      const sourceOriginal = fuelBaseTable[row.rpmIdx][row.loadIdx] || 0;
-      if (!isFinite(sourceOriginal) || sourceOriginal === 0) {
-        // Cannot compute meaningful change for zero or invalid values
-        return;
-      }
-      
-      // Calculate percent change from source tune file (for limit checking)
-      const changePct = ((row.suggestedFuelBase - sourceOriginal) / sourceOriginal) * 100.0;
-      
-      let targetValue = row.suggestedFuelBase;
-      
-      // Apply change limit (limit is based on source tune file values for idempotency)
-      if (changeLimit > 0 && Math.abs(changePct) > changeLimit) {
-        // Clamp to limit based on source tune file value
-        if (changePct > 0) {
-          targetValue = sourceOriginal * (1.0 + changeLimit / 100.0);
-        } else {
-          targetValue = sourceOriginal * (1.0 - changeLimit / 100.0);
+        // Calculate percent change from source tune file (for limit checking)
+        const changePct = ((row.suggestedFuelBase - sourceOriginal) / sourceOriginal) * 100.0;
+        
+        let targetValue = row.suggestedFuelBase;
+        
+        // Apply change limit (limit is based on source tune file values for idempotency)
+        if (changeLimit > 0 && Math.abs(changePct) > changeLimit) {
+          // Clamp to limit based on source tune file value
+          if (changePct > 0) {
+            targetValue = sourceOriginal * (1.0 + changeLimit / 100.0);
+          } else {
+            targetValue = sourceOriginal * (1.0 - changeLimit / 100.0);
+          }
+          
+          clampedDetails.push({
+            rpm: row.rpm,
+            load: row.load,
+            original: sourceOriginal,
+            suggested: row.suggestedFuelBase,
+            applied: targetValue,
+            changePct: changePct,
+            source: row.source
+          });
         }
         
-        clampedDetails.push({
-          rpm: row.rpm,
-          load: row.load,
-          original: sourceOriginal,
+        // Apply the modification (within limit, use raw suggested value; otherwise use clamped value)
+        cloneTable[row.rpmIdx][row.loadIdx] = targetValue;
+      });
+    }
+
+    // MAF modifications (only for maf_scale mode)
+    let mafCloneScale = null;
+    let mafModifications = new Map();
+    let mafClampedDetails = [];
+
+    if (mode === TUNING_MODES.MAF_SCALE) {
+      mafCloneScale = mafScale.slice();
+
+      mafClosedSummary.forEach(row => {
+        const key = row.idx;
+        mafModifications.set(key, { ...row, source: 'closed' });
+      });
+
+      mafOpenSummary.forEach(row => {
+        const key = row.idx;
+        mafModifications.set(key, { ...row, source: 'open' });
+      });
+
+      mafModifications.forEach(row => {
+        const sourceOriginal = mafScale[row.idx] || 0;
+        if (!isFinite(sourceOriginal) || sourceOriginal === 0) {
+          // Cannot scale zero values - leave unchanged
+          return;
+        }
+
+        let targetValue = row.suggestedGs;
+        const changePct = ((row.suggestedGs - sourceOriginal) / sourceOriginal) * 100.0;
+
+        if (changeLimit > 0 && Math.abs(changePct) > changeLimit) {
+          if (changePct > 0) {
+            targetValue = sourceOriginal * (1.0 + changeLimit / 100.0);
+          } else {
+            targetValue = sourceOriginal * (1.0 - changeLimit / 100.0);
+          }
+
+          mafClampedDetails.push({
+            voltage: row.voltage,
+            original: sourceOriginal,
+            suggested: row.suggestedGs,
+            applied: targetValue,
+            changePct: changePct,
+            source: row.source
+          });
+        }
+
+        mafCloneScale[row.idx] = targetValue;
+      });
+    }
+
+    // Build visualization tables (only for fuel_base mode)
+    let openChangeTable = null;
+    let closedChangeTable = null;
+    let openHitCounts = null;
+    let closedHitCounts = null;
+    let suggestedTable = null;
+
+    if (mode === TUNING_MODES.FUEL_BASE && cloneTable) {
+      // Build 2D tables for open-loop and closed-loop change visualization
+      // Each cell contains: { current, suggested, changePct, samples, source } or null if no data
+      openChangeTable = Array.from({ length: rpmAxis.length }, () => 
+        Array.from({ length: loadAxis.length }, () => null)
+      );
+      closedChangeTable = Array.from({ length: rpmAxis.length }, () => 
+        Array.from({ length: loadAxis.length }, () => null)
+      );
+      openHitCounts = Array.from({ length: rpmAxis.length }, () => 
+        Array.from({ length: loadAxis.length }, () => 0)
+      );
+      closedHitCounts = Array.from({ length: rpmAxis.length }, () => 
+        Array.from({ length: loadAxis.length }, () => 0)
+      );
+
+      // Populate open-loop change table
+      openSummary.forEach(row => {
+        const changePct = row.currentFuelBase !== 0
+          ? ((row.suggestedFuelBase - row.currentFuelBase) / row.currentFuelBase) * 100
+          : 0;
+        openChangeTable[row.rpmIdx][row.loadIdx] = {
+          current: row.currentFuelBase,
           suggested: row.suggestedFuelBase,
-          applied: targetValue,
           changePct: changePct,
-          source: row.source
-        });
-      }
-      
-      // Apply the modification (within limit, use raw suggested value; otherwise use clamped value)
-      cloneTable[row.rpmIdx][row.loadIdx] = targetValue;
-    });
-
-    const mafCloneScale = mafScale.slice();
-    const mafModifications = new Map();
-
-    mafClosedSummary.forEach(row => {
-      const key = row.idx;
-      mafModifications.set(key, { ...row, source: 'closed' });
-    });
-
-    mafOpenSummary.forEach(row => {
-      const key = row.idx;
-      mafModifications.set(key, { ...row, source: 'open' });
-    });
-
-    const mafClampedDetails = [];
-    mafModifications.forEach(row => {
-      const sourceOriginal = mafScale[row.idx] || 0;
-      if (!isFinite(sourceOriginal) || sourceOriginal === 0) {
-        // Cannot scale zero values - leave unchanged
-        return;
-      }
-
-      let targetValue = row.suggestedGs;
-      const changePct = ((row.suggestedGs - sourceOriginal) / sourceOriginal) * 100.0;
-
-      if (changeLimit > 0 && Math.abs(changePct) > changeLimit) {
-        if (changePct > 0) {
-          targetValue = sourceOriginal * (1.0 + changeLimit / 100.0);
-        } else {
-          targetValue = sourceOriginal * (1.0 - changeLimit / 100.0);
-        }
-
-        mafClampedDetails.push({
-          voltage: row.voltage,
-          original: sourceOriginal,
-          suggested: row.suggestedGs,
-          applied: targetValue,
-          changePct: changePct,
-          source: row.source
-        });
-      }
-
-      mafCloneScale[row.idx] = targetValue;
-    });
-
-    // Build 2D tables for open-loop and closed-loop change visualization
-    // Each cell contains: { current, suggested, changePct, samples, source } or null if no data
-    const openChangeTable = Array.from({ length: rpmAxis.length }, () => 
-      Array.from({ length: loadAxis.length }, () => null)
-    );
-    const closedChangeTable = Array.from({ length: rpmAxis.length }, () => 
-      Array.from({ length: loadAxis.length }, () => null)
-    );
-    const openHitCounts = Array.from({ length: rpmAxis.length }, () => 
-      Array.from({ length: loadAxis.length }, () => 0)
-    );
-    const closedHitCounts = Array.from({ length: rpmAxis.length }, () => 
-      Array.from({ length: loadAxis.length }, () => 0)
-    );
-
-    // Populate open-loop change table
-    openSummary.forEach(row => {
-      const changePct = row.currentFuelBase !== 0
-        ? ((row.suggestedFuelBase - row.currentFuelBase) / row.currentFuelBase) * 100
-        : 0;
-      openChangeTable[row.rpmIdx][row.loadIdx] = {
-        current: row.currentFuelBase,
-        suggested: row.suggestedFuelBase,
-        changePct: changePct,
-        samples: row.samples,
-        meanErrorPct: row.meanErrorPct
-      };
-      openHitCounts[row.rpmIdx][row.loadIdx] = row.samples;
-    });
-
-    // Populate closed-loop change table
-    closedSummary.forEach(row => {
-      const changePct = row.currentFuelBase !== 0
-        ? ((row.suggestedFuelBase - row.currentFuelBase) / row.currentFuelBase) * 100
-        : 0;
-      closedChangeTable[row.rpmIdx][row.loadIdx] = {
-        current: row.currentFuelBase,
-        suggested: row.suggestedFuelBase,
-        changePct: changePct,
-        samples: row.samples,
-        meanTrim: row.meanTrim
-      };
-      closedHitCounts[row.rpmIdx][row.loadIdx] = row.samples;
-    });
-
-    // Build combined/final suggested table (showing what will be applied after change limits)
-    const suggestedTable = Array.from({ length: rpmAxis.length }, () => 
-      Array.from({ length: loadAxis.length }, () => null)
-    );
-    
-    for (let rpmIdx = 0; rpmIdx < rpmAxis.length; rpmIdx++) {
-      for (let loadIdx = 0; loadIdx < loadAxis.length; loadIdx++) {
-        const current = fuelBaseTable[rpmIdx][loadIdx];
-        const suggested = cloneTable[rpmIdx][loadIdx];
-        const changePct = current !== 0 ? ((suggested - current) / current) * 100 : 0;
-        const hasChange = Math.abs(changePct) > 0.01;
-        
-        // Determine source (open takes priority over closed)
-        let source = null;
-        let samples = 0;
-        if (openChangeTable[rpmIdx][loadIdx]) {
-          source = 'open';
-          samples = openChangeTable[rpmIdx][loadIdx].samples;
-        } else if (closedChangeTable[rpmIdx][loadIdx]) {
-          source = 'closed';
-          samples = closedChangeTable[rpmIdx][loadIdx].samples;
-        }
-        
-        suggestedTable[rpmIdx][loadIdx] = {
-          current: current,
-          suggested: suggested,
-          changePct: changePct,
-          hasChange: hasChange,
-          source: source,
-          samples: samples
+          samples: row.samples,
+          meanErrorPct: row.meanErrorPct
         };
+        openHitCounts[row.rpmIdx][row.loadIdx] = row.samples;
+      });
+
+      // Populate closed-loop change table
+      closedSummary.forEach(row => {
+        const changePct = row.currentFuelBase !== 0
+          ? ((row.suggestedFuelBase - row.currentFuelBase) / row.currentFuelBase) * 100
+          : 0;
+        closedChangeTable[row.rpmIdx][row.loadIdx] = {
+          current: row.currentFuelBase,
+          suggested: row.suggestedFuelBase,
+          changePct: changePct,
+          samples: row.samples,
+          meanTrim: row.meanTrim
+        };
+        closedHitCounts[row.rpmIdx][row.loadIdx] = row.samples;
+      });
+
+      // Build combined/final suggested table (showing what will be applied after change limits)
+      suggestedTable = Array.from({ length: rpmAxis.length }, () => 
+        Array.from({ length: loadAxis.length }, () => null)
+      );
+      
+      for (let rpmIdx = 0; rpmIdx < rpmAxis.length; rpmIdx++) {
+        for (let loadIdx = 0; loadIdx < loadAxis.length; loadIdx++) {
+          const current = fuelBaseTable[rpmIdx][loadIdx];
+          const suggested = cloneTable[rpmIdx][loadIdx];
+          const changePct = current !== 0 ? ((suggested - current) / current) * 100 : 0;
+          const hasChange = Math.abs(changePct) > 0.01;
+          
+          // Determine source (open takes priority over closed)
+          let source = null;
+          let samples = 0;
+          if (openChangeTable[rpmIdx][loadIdx]) {
+            source = 'open';
+            samples = openChangeTable[rpmIdx][loadIdx].samples;
+          } else if (closedChangeTable[rpmIdx][loadIdx]) {
+            source = 'closed';
+            samples = closedChangeTable[rpmIdx][loadIdx].samples;
+          }
+          
+          suggestedTable[rpmIdx][loadIdx] = {
+            current: current,
+            suggested: suggested,
+            changePct: changePct,
+            hasChange: hasChange,
+            source: source,
+            samples: samples
+          };
+        }
       }
     }
 
-    const mafOpenSummaryMap = new Map(mafOpenSummary.map(entry => [entry.idx, entry]));
-    const mafClosedSummaryMap = new Map(mafClosedSummary.map(entry => [entry.idx, entry]));
-    const mafCombinedChanges = mafVoltageAxis.map((voltage, idx) => {
-      const current = mafScale[idx] || 0;
-      const suggested = mafCloneScale[idx];
-      const changePct = current !== 0 ? ((suggested - current) / current) * 100 : 0;
-      const hasChange = Math.abs(changePct) > 0.01;
+    // Build MAF combined changes (only for maf_scale mode)
+    let mafCombinedChanges = null;
+    let mafScaleStrings = null;
 
-      let source = null;
-      let samples = 0;
-      let metricLabel = null;
-      let metricValue = null;
-      if (mafOpenSummaryMap.has(idx)) {
-        const entry = mafOpenSummaryMap.get(idx);
-        source = 'open';
-        samples = entry.samples;
-        metricLabel = 'Lambda Error';
-        metricValue = entry.meanErrorPct;
-      } else if (mafClosedSummaryMap.has(idx)) {
-        const entry = mafClosedSummaryMap.get(idx);
-        source = 'closed';
-        samples = entry.samples;
-        metricLabel = 'Mean Trim';
-        metricValue = entry.meanTrim;
-      }
+    if (mode === TUNING_MODES.MAF_SCALE && mafCloneScale) {
+      const mafOpenSummaryMap = new Map(mafOpenSummary.map(entry => [entry.idx, entry]));
+      const mafClosedSummaryMap = new Map(mafClosedSummary.map(entry => [entry.idx, entry]));
+      mafCombinedChanges = mafVoltageAxis.map((voltage, idx) => {
+        const current = mafScale[idx] || 0;
+        const suggested = mafCloneScale[idx];
+        const changePct = current !== 0 ? ((suggested - current) / current) * 100 : 0;
+        const hasChange = Math.abs(changePct) > 0.01;
 
-      return {
-        idx,
-        voltage,
-        current,
-        suggested,
-        changePct,
-        hasChange,
-        source,
-        samples,
-        metricLabel,
-        metricValue
-      };
-    });
+        let source = null;
+        let samples = 0;
+        let metricLabel = null;
+        let metricValue = null;
+        if (mafOpenSummaryMap.has(idx)) {
+          const entry = mafOpenSummaryMap.get(idx);
+          source = 'open';
+          samples = entry.samples;
+          metricLabel = 'Lambda Error';
+          metricValue = entry.meanErrorPct;
+        } else if (mafClosedSummaryMap.has(idx)) {
+          const entry = mafClosedSummaryMap.get(idx);
+          source = 'closed';
+          samples = entry.samples;
+          metricLabel = 'Mean Trim';
+          metricValue = entry.meanTrim;
+        }
 
-    const mafScaleStrings = [
-      mafCloneScale.map(val => (isFinite(val) ? val.toFixed(2) : '0.00')).join(', ')
-    ];
+        return {
+          idx,
+          voltage,
+          current,
+          suggested,
+          changePct,
+          hasChange,
+          source,
+          samples,
+          metricLabel,
+          metricValue
+        };
+      });
+
+      mafScaleStrings = [
+        mafCloneScale.map(val => (isFinite(val) ? val.toFixed(2) : '0.00')).join(', ')
+      ];
+    }
 
     return {
+      // Mode indicator
+      mode,
+      // Common fields
+      changeLimitPercent: changeLimit,
+      minSamples,
+      minHitWeight,
+      skippedRows,
+      // Fuel-base specific results (only populated for fuel_base mode)
       openSummary,
       closedSummary,
       modificationsApplied: modifications.size,
       clampedModifications: clampedDetails,
-      fuelBaseStrings: formatFuelBaseTable(cloneTable),
-      changeLimitPercent: changeLimit,
-      minSamples,
-      minHitWeight,
+      fuelBaseStrings: cloneTable ? formatFuelBaseTable(cloneTable) : null,
       totalOpenSamples,
       totalClosedSamples,
-      skippedRows,
       filteredByCenterWeight,
-      // Heatmap data for fuel_base coverage visualization
       hitCounts,
       rpmAxis,
       loadAxis,
-      // Table-based change data for visualization
       currentFuelBase: fuelBaseTable,
       openChangeTable,
       closedChangeTable,
       openHitCounts,
       closedHitCounts,
       suggestedTable,
-      // MAF calibration details
+      // MAF calibration specific results (only populated for maf_scale mode)
       mafOpenSummary,
       mafClosedSummary,
       mafModificationsApplied: mafModifications.size,
@@ -780,8 +851,16 @@
   }
 
   function downloadTune(result, filename, baseTuneData = null) {
-    if (!result || !Array.isArray(result.fuelBaseStrings) || !Array.isArray(result.mafScaleStrings)) {
+    if (!result || !result.mode) {
       return { error: 'Run the autotune analysis before downloading a tune file.' };
+    }
+
+    // Validate mode-specific data exists
+    if (result.mode === TUNING_MODES.FUEL_BASE && !Array.isArray(result.fuelBaseStrings)) {
+      return { error: 'Fuel base analysis data not available. Run analysis in Base Fuel mode.' };
+    }
+    if (result.mode === TUNING_MODES.MAF_SCALE && !Array.isArray(result.mafScaleStrings)) {
+      return { error: 'MAF scale analysis data not available. Run analysis in MAF Calibration mode.' };
     }
 
     // Use base tune file if provided, otherwise use currently loaded tune file
@@ -805,28 +884,28 @@
       return { error: 'Unable to clone tune data.' };
     }
 
-    const fuelBaseMap = tuneData.maps.find(entry => entry.id === 'fuel_base');
-    if (!fuelBaseMap) {
-      return { error: 'fuel_base map not found in tune file.' };
+    // Find the map to modify based on mode
+    let targetMap = null;
+    let expectedLength = 0;
+
+    if (result.mode === TUNING_MODES.FUEL_BASE) {
+      targetMap = tuneData.maps.find(entry => entry.id === 'fuel_base');
+      if (!targetMap) {
+        return { error: 'fuel_base map not found in tune file.' };
+      }
+    } else if (result.mode === TUNING_MODES.MAF_SCALE) {
+      targetMap = tuneData.maps.find(entry => entry.id === 'maf_scale');
+      if (!targetMap) {
+        return { error: 'maf_scale map not found in tune file.' };
+      }
+      expectedLength = Array.isArray(result.mafSuggestedScale) ? result.mafSuggestedScale.length : 0;
     }
 
-    const mafScaleMap = tuneData.maps.find(entry => entry.id === 'maf_scale');
-    if (!mafScaleMap) {
-      return { error: 'maf_scale map not found in tune file.' };
-    }
-
-    const expectedMafLength = Array.isArray(result.mafSuggestedScale)
-      ? result.mafSuggestedScale.length
-      : 0;
-
-    // Validate that the fuel_base table dimensions match (if using base tune file)
+    // Validate that the table dimensions match (if using base tune file)
     if (baseTuneData) {
       if (!window.tuneFileParser || !window.tuneFileParser.isLoaded()) {
         return { error: 'Analysis tune file must be loaded to validate base tune file compatibility.' };
       }
-
-      const rpmAxis = ensureNumberArray(window.tuneFileParser.getArray('base_spark_rpm_index'));
-      const loadAxis = ensureNumberArray(window.tuneFileParser.getArray('base_spark_map_index'));
       
       // Create a temporary parser to validate the base tune file
       if (typeof TuneFileParser === 'undefined') {
@@ -838,28 +917,37 @@
         return { error: 'Unable to parse base tune file data.' };
       }
 
-      const baseFuelBaseTable = baseTuneParser.getTable('fuel_base');
-      const baseRpmAxis = ensureNumberArray(baseTuneParser.getArray('base_spark_rpm_index'));
-      const baseLoadAxis = ensureNumberArray(baseTuneParser.getArray('base_spark_map_index'));
-      const baseMafScale = ensureNumberArray(baseTuneParser.getArray('maf_scale'));
+      if (result.mode === TUNING_MODES.FUEL_BASE) {
+        const rpmAxis = ensureNumberArray(window.tuneFileParser.getArray('base_spark_rpm_index'));
+        const loadAxis = ensureNumberArray(window.tuneFileParser.getArray('base_spark_map_index'));
+        const baseFuelBaseTable = baseTuneParser.getTable('fuel_base');
+        const baseRpmAxis = ensureNumberArray(baseTuneParser.getArray('base_spark_rpm_index'));
+        const baseLoadAxis = ensureNumberArray(baseTuneParser.getArray('base_spark_map_index'));
 
-      if (!baseFuelBaseTable || !baseRpmAxis || !baseLoadAxis) {
-        return { error: 'Base tune file is missing required fuel_base table or axis data.' };
-      }
+        if (!baseFuelBaseTable || !baseRpmAxis || !baseLoadAxis) {
+          return { error: 'Base tune file is missing required fuel_base table or axis data.' };
+        }
 
-      if (baseFuelBaseTable.length !== rpmAxis.length || 
-          baseFuelBaseTable[0]?.length !== loadAxis.length ||
-          baseRpmAxis.length !== rpmAxis.length ||
-          baseLoadAxis.length !== loadAxis.length ||
-          !baseMafScale || (expectedMafLength && baseMafScale.length !== expectedMafLength)) {
-        return { 
-          error: 'Base tune file tables or axes do not match the tune file used for analysis. Ensure RPM, Load, and MAF calibration structures align.' 
-        };
+        if (baseFuelBaseTable.length !== rpmAxis.length || 
+            baseFuelBaseTable[0]?.length !== loadAxis.length ||
+            baseRpmAxis.length !== rpmAxis.length ||
+            baseLoadAxis.length !== loadAxis.length) {
+          return { error: 'Base tune file fuel_base table dimensions do not match the tune file used for analysis.' };
+        }
+      } else if (result.mode === TUNING_MODES.MAF_SCALE) {
+        const baseMafScale = ensureNumberArray(baseTuneParser.getArray('maf_scale'));
+        if (!baseMafScale || (expectedLength && baseMafScale.length !== expectedLength)) {
+          return { error: 'Base tune file maf_scale table length does not match the tune file used for analysis.' };
+        }
       }
     }
 
-    fuelBaseMap.data = result.fuelBaseStrings;
-    mafScaleMap.data = result.mafScaleStrings;
+    // Apply modifications based on mode
+    if (result.mode === TUNING_MODES.FUEL_BASE) {
+      targetMap.data = result.fuelBaseStrings;
+    } else if (result.mode === TUNING_MODES.MAF_SCALE) {
+      targetMap.data = result.mafScaleStrings;
+    }
 
     const fileName = (filename || 'autotuned_tune.tune').trim() || 'autotuned_tune.tune';
     const lowerFileName = fileName.toLowerCase();

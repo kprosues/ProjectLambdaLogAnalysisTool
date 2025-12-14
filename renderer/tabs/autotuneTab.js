@@ -2,7 +2,8 @@
 const AutotuneTab = {
   elements: {
     form: null,
-    minu: null,
+    mode: null,
+    minSamples: null,
     changeLimit: null,
     minHitWeight: null,
     minHitWeightValue: null,
@@ -15,6 +16,9 @@ const AutotuneTab = {
     message: null,
     heatmap: null,
     heatmapMaxLabel: null,
+    // Section wrappers for show/hide
+    fuelbaseSections: null,
+    mafSections: null,
     // Table-based fuel change displays
     openChangeTable: null,
     openStats: null,
@@ -30,6 +34,7 @@ const AutotuneTab = {
 
   initialize() {
     this.elements.form = document.getElementById('autotune-form');
+    this.elements.mode = document.getElementById('autotune-mode');
     this.elements.minSamples = document.getElementById('autotune-minSamples');
     this.elements.changeLimit = document.getElementById('autotune-changeLimit');
     this.elements.minHitWeight = document.getElementById('autotune-minHitWeight');
@@ -43,6 +48,9 @@ const AutotuneTab = {
     this.elements.message = document.getElementById('autotune-message');
     this.elements.heatmap = document.getElementById('autotune-heatmap');
     this.elements.heatmapMaxLabel = document.getElementById('heatmap-max-label');
+    // Section wrappers for show/hide
+    this.elements.fuelbaseSections = document.getElementById('autotune-fuelbase-sections');
+    this.elements.mafSections = document.getElementById('autotune-maf-sections');
     // Table-based fuel change displays
     this.elements.openChangeTable = document.getElementById('autotune-openChangeTable');
     this.elements.openStats = document.getElementById('autotune-openStats');
@@ -94,6 +102,30 @@ const AutotuneTab = {
         this.elements.minHitWeightValue.textContent = value.toFixed(2);
       });
     }
+
+    // Mode change handler - show/hide appropriate sections
+    if (this.elements.mode) {
+      this.elements.mode.addEventListener('change', () => {
+        this.updateSectionVisibility();
+      });
+      // Set initial visibility
+      this.updateSectionVisibility();
+    }
+  },
+
+  updateSectionVisibility() {
+    const mode = this.elements.mode?.value || 'fuel_base';
+    
+    if (this.elements.fuelbaseSections) {
+      this.elements.fuelbaseSections.style.display = mode === 'fuel_base' ? 'block' : 'none';
+    }
+    if (this.elements.mafSections) {
+      this.elements.mafSections.style.display = mode === 'maf_scale' ? 'block' : 'none';
+    }
+
+    // Clear previous analysis when mode changes
+    this.analysisResult = null;
+    this.toggleDownloadButton(false);
   },
 
   async handleBaseTuneFileChange(event) {
@@ -167,15 +199,17 @@ const AutotuneTab = {
       return;
     }
 
+    const mode = this.elements.mode?.value || 'fuel_base';
     const minSamples = parseInt(this.elements.minSamples?.value || '150', 10) || 150;
     const changeLimit = parseFloat(this.elements.changeLimit?.value || '5') || 5;
     const minHitWeight = parseFloat(this.elements.minHitWeight?.value || '0') || 0;
 
-    this.setMessage('Running autotune analysis...', 'info');
+    const modeLabel = mode === 'maf_scale' ? 'MAF Calibration' : 'Base Fuel';
+    this.setMessage(`Running ${modeLabel} autotune analysis...`, 'info');
     this.toggleDownloadButton(false);
 
     try {
-      const result = window.AutotuneEngine.analyze({ minSamples, changeLimit, minHitWeight });
+      const result = window.AutotuneEngine.analyze({ mode, minSamples, changeLimit, minHitWeight });
       if (result.error) {
         this.analysisResult = null;
         this.renderHeatmap(null, null, null);
@@ -188,27 +222,42 @@ const AutotuneTab = {
         ...result,
         outputFileName: this.getOutputFileName()
       };
-      this.renderHeatmap(result.hitCounts, result.rpmAxis, result.loadAxis);
-      this.renderFuelChangeTables(result);
 
-      const summaryMessage = [
-        `Analysis complete. ${result.modificationsApplied || 0} fuel base cells updated.`,
-        result.mafModificationsApplied
-          ? `${result.mafModificationsApplied} MAF cells updated.`
-          : null,
-        result.clampedModifications?.length
-          ? `${result.clampedModifications.length} fuel base cells were limited to ±${result.changeLimitPercent}% change.`
-          : null,
-        result.mafClampedModifications?.length
-          ? `${result.mafClampedModifications.length} MAF cells were limited to ±${result.changeLimitPercent}% change.`
-          : null,
-        result.filteredByCenterWeight
-          ? `${result.filteredByCenterWeight} samples filtered by min hit weight (${result.minHitWeight?.toFixed(2)}).`
-          : null,
-        result.mafFilteredByCenterWeight
-          ? `${result.mafFilteredByCenterWeight} MAF samples filtered by min hit weight (${result.minHitWeight?.toFixed(2)}).`
-          : null
-      ].filter(Boolean).join(' ');
+      // Render appropriate visualizations based on mode
+      if (result.mode === 'fuel_base') {
+        this.renderHeatmap(result.hitCounts, result.rpmAxis, result.loadAxis);
+        this.renderFuelChangeTables(result);
+      } else if (result.mode === 'maf_scale') {
+        this.renderMafChangeTable(
+          this.elements.mafChangeTable,
+          this.elements.mafStats,
+          result.mafCombinedChanges
+        );
+      }
+
+      // Build mode-specific summary message
+      let summaryMessage;
+      if (result.mode === 'fuel_base') {
+        summaryMessage = [
+          `Analysis complete. ${result.modificationsApplied || 0} fuel base cells updated.`,
+          result.clampedModifications?.length
+            ? `${result.clampedModifications.length} cells were limited to ±${result.changeLimitPercent}% change.`
+            : null,
+          result.filteredByCenterWeight
+            ? `${result.filteredByCenterWeight} samples filtered by min hit weight (${result.minHitWeight?.toFixed(2)}).`
+            : null
+        ].filter(Boolean).join(' ');
+      } else {
+        summaryMessage = [
+          `Analysis complete. ${result.mafModificationsApplied || 0} MAF calibration cells updated.`,
+          result.mafClampedModifications?.length
+            ? `${result.mafClampedModifications.length} cells were limited to ±${result.changeLimitPercent}% change.`
+            : null,
+          result.mafFilteredByCenterWeight
+            ? `${result.mafFilteredByCenterWeight} samples filtered by min hit weight (${result.minHitWeight?.toFixed(2)}).`
+            : null
+        ].filter(Boolean).join(' ');
+      }
 
       this.setMessage(summaryMessage || 'Analysis complete.', 'success');
       this.toggleDownloadButton(true);
