@@ -1,6 +1,6 @@
 {
   "name": "ecu-log-analysis-tool",
-  "version": "3.3.1",
+  "version": "3.4.0",
   "description": "Desktop application for analyzing ProjectLambda Subaru WRX STi log files and detecting anomalies",
   "main": "main.js",
   "scripts": {
@@ -35,14 +35,26 @@
     "directories": {
       "output": "dist"
     },
+    "asar": true,
     "files": [
       "main.js",
       "preload.js",
       "renderer/**/*",
       "analysis/**/*",
       "assets/**/*",
-      "node_modules/**/*",
-      "package.json"
+      "resources/tooltipConfig.js",
+      "package.json",
+      "node_modules/chart.js/**/*",
+      "node_modules/chartjs-plugin-zoom/**/*",
+      "node_modules/papaparse/**/*",
+      "node_modules/hammerjs/**/*",
+      "node_modules/@kurkle/**/*",
+      "!**/*.map",
+      "!**/*.md",
+      "!**/tests/**",
+      "!**/test/**",
+      "!**/docs/**",
+      "!**/.github/**"
     ],
     "win": {
       "target": "portable",

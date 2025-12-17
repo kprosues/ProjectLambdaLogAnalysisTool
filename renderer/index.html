@@ -68,6 +68,7 @@
       <!-- Tab Navigation -->
       <div class="tabs-container">
         <button class="tab-btn active" data-tab="logscore">Log Score</button>
+        <button class="tab-btn" data-tab="autotune">Autotune</button>
         <button class="tab-btn" data-tab="knock">Knock Analysis</button>
         <button class="tab-btn" data-tab="boost">Boost Control</button>
         <button class="tab-btn" data-tab="fueling">Fueling</button>
@@ -407,7 +408,7 @@
         </section>
       </div>
 
-      <!-- Fueling Tab (Combined Air/Fuel Ratio + Autotune) -->
+      <!-- Fueling Tab (Air/Fuel Ratio Analysis) -->
       <div class="tab-content" data-tab="fueling">
         <!-- Tab Loading Overlay -->
         <div class="tab-loading-overlay" style="display: none;">
@@ -494,160 +495,6 @@
             </div>
           </div>
         </section>
-
-        <!-- Autotune Section -->
-        <section class="statistics-panel" style="margin-top: 40px; border-top: 2px solid #e0e0e0; padding-top: 30px;">
-          <h2>Autotune Adjustments</h2>
-          <form id="autotune-form" class="form-grid">
-            <div class="form-field">
-              <label for="autotune-mode">Tuning Mode</label>
-              <select id="autotune-mode">
-                <option value="fuel_base">Base Fuel Table</option>
-                <option value="maf_scale">MAF Calibration</option>
-              </select>
-              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
-                Choose which table to tune. Base Fuel adjusts fuel_base using RPM/Load cells. MAF Calibration adjusts maf_scale using voltage bins.
-              </small>
-            </div>
-            <div class="form-field">
-              <label for="autotune-minSamples">Min Samples per Cell</label>
-              <input type="number" id="autotune-minSamples" min="1" value="150">
-            </div>
-            <div class="form-field">
-              <label for="autotune-changeLimit">Change Limit (%)</label>
-              <input type="number" id="autotune-changeLimit" min="0" step="0.5" value="5">
-            </div>
-            <div class="form-field">
-              <label for="autotune-minHitWeight">Min Hit Weight (Cell Centering)</label>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="range" id="autotune-minHitWeight" min="0" max="1" step="0.05" value="0" style="flex: 1;">
-                <span id="autotune-minHitWeight-value" style="min-width: 50px; text-align: right; font-weight: bold;">0.00</span>
-              </div>
-              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
-                Filter data by cell position. 0 = include all hits weighted by position, 1 = only exact center hits. Higher values filter out edge data more aggressively.
-              </small>
-            </div>
-            <div class="form-field">
-              <label for="autotune-baseTuneFile">Base Tune File (Optional)</label>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="file" id="autotune-baseTuneFile" accept=".json,.tune" style="flex: 1;">
-                <button type="button" id="autotune-clearBaseTune" class="btn btn-secondary" style="display: none;">Clear</button>
-              </div>
-              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
-                If specified, modifications will be applied to this file. Otherwise, the currently loaded tune file will be used.
-              </small>
-              <span id="autotune-baseTuneFileName" style="font-size: 12px; color: #666; margin-top: 4px; display: block;"></span>
-            </div>
-            <div class="form-field" style="grid-column: span 2;">
-              <label for="autotune-additionalLogs">Additional Datalogs (Optional)</label>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="file" id="autotune-additionalLogs" accept=".csv" multiple style="flex: 1;">
-                <button type="button" id="autotune-clearAdditionalLogs" class="btn btn-secondary" style="display: none;">Clear All</button>
-              </div>
-              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
-                Add more datalogs to include in the analysis. All data will be combined with the primary loaded log for more accurate table changes.
-              </small>
-              <div id="autotune-additionalLogsList" class="additional-logs-list" style="margin-top: 8px;"></div>
-              <div id="autotune-additionalLogsStats" style="font-size: 12px; color: #28a745; margin-top: 4px;"></div>
-            </div>
-            <div class="form-field">
-              <label for="autotune-outputName">Output Tune File Name</label>
-              <input type="text" id="autotune-outputName" value="Keith Proseus_1999JDMSTI_DW740_VF28_21builtStroker_v">
-            </div>
-            <div class="form-actions">
-              <button id="autotune-runBtn" class="btn btn-primary">Run Autotune Analysis</button>
-              <button id="autotune-downloadBtn" class="btn btn-secondary" disabled>Download Modified Tune</button>
-            </div>
-          </form>
-          <div id="autotune-message" class="status-message">
-            Load a tune and datalog, then run the analysis to generate recommendations.
-          </div>
-        </section>
-
-        <!-- Fuel Base Sections (shown when mode = fuel_base) -->
-        <div id="autotune-fuelbase-sections">
-        <!-- Fuel Base Coverage Heatmap -->
-        <section class="anomaly-section">
-          <h2>Fuel Base Table Coverage Heatmap</h2>
-          <p class="heatmap-description">This heatmap shows how many datalog samples fell into each cell of the fuel_base table. Darker colors indicate more data points. Cells with no data remain uncolored.</p>
-          <div class="heatmap-legend">
-            <span class="legend-label">Data Hits:</span>
-            <div class="legend-gradient">
-              <span class="legend-min">0</span>
-              <div class="gradient-bar"></div>
-              <span class="legend-max" id="heatmap-max-label">Max</span>
-            </div>
-          </div>
-          <div class="heatmap-container" id="autotune-heatmap">
-            <p class="empty-state">Run analysis to see fuel table coverage.</p>
-          </div>
-        </section>
-
-        <!-- Open-Loop Fuel Base Changes -->
-        <section class="anomaly-section">
-          <h2>Open-Loop Fuel Base Changes</h2>
-          <p class="fuel-change-description">Suggested changes based on open-loop (PE mode) lambda analysis. Green cells indicate fuel should increase, red cells indicate fuel should decrease. Only cells meeting the minimum sample threshold are shown.</p>
-          <div class="fuel-change-legend">
-            <span class="legend-label">Change:</span>
-            <div class="legend-item"><span class="legend-swatch fuel-decrease-high"></span> Decrease &gt;3%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-decrease-low"></span> Decrease 1-3%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Data / &lt;1%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-increase-low"></span> Increase 1-3%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-increase-high"></span> Increase &gt;3%</div>
-          </div>
-          <div class="fuel-change-container" id="autotune-openChangeTable">
-            <p class="empty-state">No analysis results yet.</p>
-          </div>
-          <div class="fuel-change-stats" id="autotune-openStats"></div>
-        </section>
-
-        <!-- Closed-Loop Fuel Base Changes -->
-        <section class="anomaly-section">
-          <h2>Closed-Loop Fuel Base Changes</h2>
-          <p class="fuel-change-description">Suggested changes based on closed-loop fuel trim analysis. Green cells indicate fuel should increase (positive trim), red cells indicate fuel should decrease (negative trim). Only cells meeting the minimum sample threshold are shown.</p>
-          <div class="fuel-change-legend">
-            <span class="legend-label">Change:</span>
-            <div class="legend-item"><span class="legend-swatch fuel-decrease-high"></span> Decrease &gt;3%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-decrease-low"></span> Decrease 1-3%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Data / &lt;1%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-increase-low"></span> Increase 1-3%</div>
-            <div class="legend-item"><span class="legend-swatch fuel-increase-high"></span> Increase &gt;3%</div>
-          </div>
-          <div class="fuel-change-container" id="autotune-closedChangeTable">
-            <p class="empty-state">No analysis results yet.</p>
-          </div>
-          <div class="fuel-change-stats" id="autotune-closedStats"></div>
-        </section>
-
-        <!-- Combined Suggested Fuel Base Table -->
-        <section class="anomaly-section">
-          <h2>Final Suggested Fuel Base Table</h2>
-          <p class="fuel-change-description">Combined view showing final suggested values after applying change limits. Open-loop changes take priority over closed-loop where both exist. Cells with changes are highlighted based on direction and magnitude.</p>
-          <div class="fuel-change-legend">
-            <span class="legend-label">Source:</span>
-            <div class="legend-item"><span class="legend-swatch fuel-source-open"></span> Open-Loop</div>
-            <div class="legend-item"><span class="legend-swatch fuel-source-closed"></span> Closed-Loop</div>
-            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Change</div>
-          </div>
-          <div class="fuel-change-container" id="autotune-suggestedTable">
-            <p class="empty-state">No analysis results yet.</p>
-          </div>
-          <div class="fuel-change-stats" id="autotune-suggestedStats"></div>
-        </section>
-        </div><!-- end autotune-fuelbase-sections -->
-
-        <!-- MAF Calibration Sections (shown when mode = maf_scale) -->
-        <div id="autotune-maf-sections">
-        <!-- MAF Calibration Adjustments -->
-        <section class="anomaly-section">
-          <h2>MAF Calibration Adjustments</h2>
-          <p class="fuel-change-description">Suggested updates to the maf_scale (voltage → g/s) table based on combined closed-loop fuel trims and open-loop lambda error. Each row represents a voltage breakpoint from the tune file.</p>
-          <div class="fuel-change-container" id="autotune-mafChangeTable">
-            <p class="empty-state">No analysis results yet.</p>
-          </div>
-          <div class="fuel-change-stats" id="autotune-mafStats"></div>
-        </section>
-        </div><!-- end autotune-maf-sections -->
       </div>
 
       <!-- Fuel Trim Tab (Combined Short Term + Long Term) -->
@@ -1164,6 +1011,171 @@
           </div>
         </section>
       </div>
+
+      <!-- Autotune Tab -->
+      <div class="tab-content" data-tab="autotune">
+        <!-- Tab Loading Overlay -->
+        <div class="tab-loading-overlay" style="display: none;">
+          <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+          </div>
+        </div>
+
+        <!-- Autotune Settings Section -->
+        <section class="statistics-panel">
+          <h2>Autotune Adjustments</h2>
+          <form id="autotune-form" class="form-grid">
+            <div class="form-field">
+              <label for="autotune-mode">Tuning Mode</label>
+              <select id="autotune-mode">
+                <option value="fuel_base">Base Fuel Table</option>
+                <option value="maf_scale" selected>MAF Calibration</option>
+              </select>
+              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                Choose which table to tune. Base Fuel adjusts fuel_base using RPM/Load cells. MAF Calibration adjusts maf_scale using voltage bins.
+              </small>
+            </div>
+            <div class="form-field">
+              <label for="autotune-minSamples">Min Samples per Cell</label>
+              <input type="number" id="autotune-minSamples" min="1" value="25">
+            </div>
+            <div class="form-field">
+              <label for="autotune-changeLimit">Change Limit (%)</label>
+              <input type="number" id="autotune-changeLimit" min="0" step="0.5" value="5">
+            </div>
+            <div class="form-field">
+              <label for="autotune-minHitWeight">Min Hit Weight (Cell Centering)</label>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="range" id="autotune-minHitWeight" min="0" max="1" step="0.05" value="0.25" style="flex: 1;">
+                <span id="autotune-minHitWeight-value" style="min-width: 50px; text-align: right; font-weight: bold;">0.25</span>
+              </div>
+              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                Filter data by cell position. 0 = include all hits weighted by position, 1 = only exact center hits. Higher values filter out edge data more aggressively.
+              </small>
+            </div>
+            <div class="form-field">
+              <label for="autotune-baseTuneFile">Base Tune File (Optional)</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="autotune-baseTuneFile" accept=".json,.tune" style="flex: 1;">
+                <button type="button" id="autotune-clearBaseTune" class="btn btn-secondary" style="display: none;">Clear</button>
+              </div>
+              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                If specified, modifications will be applied to this file. Otherwise, the currently loaded tune file will be used.
+              </small>
+              <span id="autotune-baseTuneFileName" style="font-size: 12px; color: #666; margin-top: 4px; display: block;"></span>
+            </div>
+            <div class="form-field" style="grid-column: span 2;">
+              <label for="autotune-additionalLogs">Additional Datalogs (Optional)</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="autotune-additionalLogs" accept=".csv" multiple style="flex: 1;">
+                <button type="button" id="autotune-clearAdditionalLogs" class="btn btn-secondary" style="display: none;">Clear All</button>
+              </div>
+              <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                Add more datalogs to include in the analysis. All data will be combined with the primary loaded log for more accurate table changes.
+              </small>
+              <div id="autotune-additionalLogsList" class="additional-logs-list" style="margin-top: 8px;"></div>
+              <div id="autotune-additionalLogsStats" style="font-size: 12px; color: #28a745; margin-top: 4px;"></div>
+            </div>
+            <div class="form-field">
+              <label for="autotune-outputName">Output Tune File Name</label>
+              <input type="text" id="autotune-outputName" value="Keith Proseus_1999JDMSTI_DW740_VF28_21builtStroker_v">
+            </div>
+            <div class="form-actions">
+              <button id="autotune-runBtn" class="btn btn-primary">Run Autotune Analysis</button>
+              <button id="autotune-downloadBtn" class="btn btn-secondary" disabled>Download Modified Tune</button>
+            </div>
+          </form>
+          <div id="autotune-message" class="status-message">
+            Load a tune and datalog, then run the analysis to generate recommendations.
+          </div>
+        </section>
+
+        <!-- Fuel Base Sections (shown when mode = fuel_base) -->
+        <div id="autotune-fuelbase-sections">
+        <!-- Fuel Base Coverage Heatmap -->
+        <section class="anomaly-section">
+          <h2>Fuel Base Table Coverage Heatmap</h2>
+          <p class="heatmap-description">This heatmap shows how many datalog samples fell into each cell of the fuel_base table. Darker colors indicate more data points. Cells with no data remain uncolored.</p>
+          <div class="heatmap-legend">
+            <span class="legend-label">Data Hits:</span>
+            <div class="legend-gradient">
+              <span class="legend-min">0</span>
+              <div class="gradient-bar"></div>
+              <span class="legend-max" id="heatmap-max-label">Max</span>
+            </div>
+          </div>
+          <div class="heatmap-container" id="autotune-heatmap">
+            <p class="empty-state">Run analysis to see fuel table coverage.</p>
+          </div>
+        </section>
+
+        <!-- Open-Loop Fuel Base Changes -->
+        <section class="anomaly-section">
+          <h2>Open-Loop Fuel Base Changes</h2>
+          <p class="fuel-change-description">Suggested changes based on open-loop (PE mode) lambda analysis. Green cells indicate fuel should increase, red cells indicate fuel should decrease. Only cells meeting the minimum sample threshold are shown.</p>
+          <div class="fuel-change-legend">
+            <span class="legend-label">Change:</span>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-high"></span> Decrease &gt;3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-low"></span> Decrease 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Data / &lt;1%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-low"></span> Increase 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-high"></span> Increase &gt;3%</div>
+          </div>
+          <div class="fuel-change-container" id="autotune-openChangeTable">
+            <p class="empty-state">No analysis results yet.</p>
+          </div>
+          <div class="fuel-change-stats" id="autotune-openStats"></div>
+        </section>
+
+        <!-- Closed-Loop Fuel Base Changes -->
+        <section class="anomaly-section">
+          <h2>Closed-Loop Fuel Base Changes</h2>
+          <p class="fuel-change-description">Suggested changes based on closed-loop fuel trim analysis. Green cells indicate fuel should increase (positive trim), red cells indicate fuel should decrease (negative trim). Only cells meeting the minimum sample threshold are shown.</p>
+          <div class="fuel-change-legend">
+            <span class="legend-label">Change:</span>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-high"></span> Decrease &gt;3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-decrease-low"></span> Decrease 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Data / &lt;1%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-low"></span> Increase 1-3%</div>
+            <div class="legend-item"><span class="legend-swatch fuel-increase-high"></span> Increase &gt;3%</div>
+          </div>
+          <div class="fuel-change-container" id="autotune-closedChangeTable">
+            <p class="empty-state">No analysis results yet.</p>
+          </div>
+          <div class="fuel-change-stats" id="autotune-closedStats"></div>
+        </section>
+
+        <!-- Combined Suggested Fuel Base Table -->
+        <section class="anomaly-section">
+          <h2>Final Suggested Fuel Base Table</h2>
+          <p class="fuel-change-description">Combined view showing final suggested values after applying change limits. Open-loop changes take priority over closed-loop where both exist. Cells with changes are highlighted based on direction and magnitude.</p>
+          <div class="fuel-change-legend">
+            <span class="legend-label">Source:</span>
+            <div class="legend-item"><span class="legend-swatch fuel-source-open"></span> Open-Loop</div>
+            <div class="legend-item"><span class="legend-swatch fuel-source-closed"></span> Closed-Loop</div>
+            <div class="legend-item"><span class="legend-swatch fuel-no-change"></span> No Change</div>
+          </div>
+          <div class="fuel-change-container" id="autotune-suggestedTable">
+            <p class="empty-state">No analysis results yet.</p>
+          </div>
+          <div class="fuel-change-stats" id="autotune-suggestedStats"></div>
+        </section>
+        </div><!-- end autotune-fuelbase-sections -->
+
+        <!-- MAF Calibration Sections (shown when mode = maf_scale) -->
+        <div id="autotune-maf-sections">
+        <!-- MAF Calibration Adjustments -->
+        <section class="anomaly-section">
+          <h2>MAF Calibration Adjustments</h2>
+          <p class="fuel-change-description">Suggested updates to the maf_scale (voltage → g/s) table based on combined closed-loop fuel trims and open-loop lambda error. Each row represents a voltage breakpoint from the tune file.</p>
+          <div class="fuel-change-container" id="autotune-mafChangeTable">
+            <p class="empty-state">No analysis results yet.</p>
+          </div>
+          <div class="fuel-change-stats" id="autotune-mafStats"></div>
+        </section>
+        </div><!-- end autotune-maf-sections -->
+      </div>
     </div>
 
     <div id="loadingIndicator" class="loading" style="display: none;">
@@ -1174,81 +1186,24 @@
     </div>
   </div>
 
+  <!-- Load libraries from local node_modules for faster startup (no network latency) -->
+  <script src="../node_modules/papaparse/papaparse.min.js"></script>
+  <script src="../node_modules/hammerjs/hammer.min.js"></script>
+  <script src="../node_modules/chart.js/dist/chart.umd.min.js"></script>
+  <script src="../node_modules/chartjs-plugin-zoom/dist/chartjs-plugin-zoom.min.js"></script>
   <script>
-    // Track script loading
-    let chartJsLoaded = false;
-    let zoomPluginLoaded = false;
-    
-    function tryRegisterZoomPlugin() {
-      if (chartJsLoaded && zoomPluginLoaded) {
-        if (typeof Chart !== 'undefined') {
-          // Try different possible export names for the zoom plugin
-          let plugin = null;
-          if (typeof zoomPlugin !== 'undefined') {
-            plugin = zoomPlugin;
-          } else if (typeof ChartZoom !== 'undefined') {
-            plugin = ChartZoom;
-          } else if (typeof window.zoomPlugin !== 'undefined') {
-            plugin = window.zoomPlugin;
-          } else if (typeof window.ChartZoom !== 'undefined') {
-            plugin = window.ChartZoom;
-          }
-          
-          if (plugin) {
-            try {
-              Chart.register(plugin);
-            console.log('Zoom plugin registered successfully');
-          } catch (e) {
-            // Plugin might already be registered, which is fine
-            if (!e.message || (!e.message.includes('already registered') && !e.message.includes('already exists'))) {
-              console.warn('Error registering zoom plugin:', e);
-            }
-          }
-        } else {
-            console.warn('Zoom plugin not found. Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('zoom') || k.toLowerCase().includes('chart')));
-          }
-        } else {
-          console.warn('Chart.js not available after script loaded');
+    // Register zoom plugin immediately after loading
+    if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
+      try {
+        Chart.register(ChartZoom);
+        console.log('Zoom plugin registered successfully');
+      } catch (e) {
+        if (!e.message || !e.message.includes('already')) {
+          console.warn('Error registering zoom plugin:', e);
         }
       }
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onload="chartJsLoaded = true; tryRegisterZoomPlugin();"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" onload="zoomPluginLoaded = true; tryRegisterZoomPlugin();"></script>
-  <script>
-    // Fallback: try to register after a short delay
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => {
-        if (typeof Chart !== 'undefined') {
-          // Try different possible export names for the zoom plugin
-          let plugin = null;
-          if (typeof zoomPlugin !== 'undefined') {
-            plugin = zoomPlugin;
-          } else if (typeof ChartZoom !== 'undefined') {
-            plugin = ChartZoom;
-          } else if (typeof window.zoomPlugin !== 'undefined') {
-            plugin = window.zoomPlugin;
-          } else if (typeof window.ChartZoom !== 'undefined') {
-            plugin = window.ChartZoom;
-          }
-          
-          if (plugin) {
-            try {
-              Chart.register(plugin);
-            console.log('Zoom plugin registered on DOMContentLoaded (fallback)');
-          } catch (e) {
-            // Plugin might already be registered, which is fine
-            if (!e.message || (!e.message.includes('already registered') && !e.message.includes('already exists'))) {
-              // Only warn if it's not already registered
-              }
-            }
-          }
-        }
-      }, 500);
-    });
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="../analysis/tuneFileParser.js"></script>
   <script src="../analysis/dataProcessor.js"></script>
   <script src="../analysis/knockDetector.js"></script>

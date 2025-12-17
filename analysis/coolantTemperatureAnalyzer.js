@@ -92,8 +92,8 @@ class CoolantTemperatureAnalyzer {
       const time = row['Time (s)'];
       const coolantTemp = parseFloat(row[coolantTempCol]) || 0;
 
-      // Skip if value is invalid (NaN or 0)
-      if (isNaN(coolantTemp) || coolantTemp <= 0) {
+      // Skip if value is invalid (NaN) or extreme low temperature (below 0°C)
+      if (isNaN(coolantTemp) || coolantTemp < 0) {
         return;
       }
 

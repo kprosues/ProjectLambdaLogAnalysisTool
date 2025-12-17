@@ -1081,8 +1081,8 @@ const AutotuneTab = {
       extension = '.tune';
     }
 
-    // Add timestamp before extension
-    return `${baseName}_${timestamp}${extension}`;
+    // Add timestamp at beginning of filename
+    return `${timestamp}_${baseName}${extension}`;
   }
 };
 

@@ -294,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
   tabManager.registerTab('logscore', LogScoreTab, null); // No analyzer needed
   tabManager.registerTab('knock', KnockAnalysisTab, knockDetector);
   tabManager.registerTab('boost', BoostControlTab, boostAnalyzer);
-  tabManager.registerTab('fueling', FuelingTab, afrAnalyzer); // Combined AFR + Autotune tab
+  tabManager.registerTab('fueling', FuelingTab, afrAnalyzer); // AFR Analysis tab
   tabManager.registerTab('fueltrim', CombinedFuelTrimTab, fuelTrimAnalyzer); // Combined Short Term + Long Term tab
   // Store long term analyzer separately so it can be accessed
   tabManager.longTermFuelTrimAnalyzer = longTermFuelTrimAnalyzer;
@@ -302,6 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
   tabManager.registerTab('loadlimit', LoadLimitTab, loadLimitAnalyzer);
   tabManager.registerTab('coolanttemp', CoolantTemperatureTab, coolantTemperatureAnalyzer);
   tabManager.registerTab('iat', IntakeAirTemperatureTab, intakeAirTemperatureAnalyzer);
+  tabManager.registerTab('autotune', AutotuneTab, null); // Autotune tab - no analyzer needed
   
   setupEventListeners();
   

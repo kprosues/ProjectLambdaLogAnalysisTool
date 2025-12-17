@@ -2,7 +2,48 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Performance optimizations - must be set before app is ready
+app.commandLine.appendSwitch('enable-features', 'V8VmFuture'); // Enable V8 performance features
+app.commandLine.appendSwitch('js-flags', '--optimize-for-size'); // Reduce memory usage, faster startup
+
 let mainWindow;
+let splashWindow;
+
+function createSplashWindow() {
+  // Set icon path based on platform
+  let iconPath;
+  if (process.platform === 'win32') {
+    const icoPath = path.join(__dirname, 'assets', 'icon.ico');
+    const pngPath = path.join(__dirname, 'assets', 'icon.png');
+    iconPath = fs.existsSync(icoPath) ? icoPath : pngPath;
+  } else {
+    iconPath = path.join(__dirname, 'assets', 'icon.png');
+  }
+
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 500,
+    frame: false,
+    transparent: false,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: false,
+    center: true,
+    backgroundColor: '#1a1a2e',
+    icon: iconPath,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  splashWindow.loadFile('renderer/splash.html');
+  
+  // Show splash immediately when it's ready (very fast since it's minimal HTML)
+  splashWindow.once('ready-to-show', () => {
+    splashWindow.show();
+  });
+}
 
 function createWindow() {
   // Set icon path based on platform
@@ -19,13 +60,33 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    show: false, // Don't show until ready - prevents blank window
+    backgroundColor: '#f5f5f5', // Set background color to match app
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      v8CacheOptions: 'bypassHeatCheck' // Enable V8 code caching for faster startup
     },
     icon: iconPath,
     autoHideMenuBar: false
+  });
+
+  // Show main window and close splash when content is ready
+  mainWindow.once('ready-to-show', () => {
+    // Close splash window with a slight delay for smooth transition
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      setTimeout(() => {
+        mainWindow.show();
+        if (splashWindow && !splashWindow.isDestroyed()) {
+          splashWindow.close();
+          splashWindow = null;
+        }
+      }, 300); // Small delay for smooth transition
+    } else {
+      mainWindow.show();
+    }
+    console.log('Window shown after ready-to-show');
   });
 
   mainWindow.setMenuBarVisibility(true);
@@ -115,10 +176,15 @@ function createMenu(window) {
 }
 
 app.whenReady().then(() => {
+  // Show splash screen immediately
+  createSplashWindow();
+  
+  // Create main window (loads in background while splash is shown)
   createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
+      createSplashWindow();
       createWindow();
     }
   });

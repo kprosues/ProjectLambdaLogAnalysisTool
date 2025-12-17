@@ -1,8 +1,7 @@
-// Combined Fueling Tab Module - wraps AFR Analysis and Autotune functionality
+// Fueling Tab Module - wraps AFR Analysis functionality
 const FuelingTab = {
-  // Store references to the wrapped tab modules
+  // Store reference to the wrapped tab module
   afrTab: null,
-  autotuneTab: null,
 
   initialize() {
     // Initialize AFR Analysis tab functionality
@@ -12,25 +11,12 @@ const FuelingTab = {
     } else {
       console.warn('AFRAnalysisTab not found');
     }
-
-    // Initialize Autotune tab functionality
-    if (typeof AutotuneTab !== 'undefined') {
-      this.autotuneTab = AutotuneTab;
-      this.autotuneTab.initialize();
-    } else {
-      console.warn('AutotuneTab not found');
-    }
   },
 
   render(analysisData) {
     // Render AFR analysis section
     if (this.afrTab) {
       this.afrTab.render(analysisData);
-    }
-
-    // Render Autotune section (form-driven, doesn't need analysis data)
-    if (this.autotuneTab) {
-      this.autotuneTab.render();
     }
   }
 };

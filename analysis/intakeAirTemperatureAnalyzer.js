@@ -8,7 +8,7 @@ class IntakeAirTemperatureAnalyzer {
     // IAT thresholds based on compensation table ranges
     // IAT index breakpoints: -20, 0, 20, 40, 60, 80, 100, 120°C
     // Normal operating range: typically 20-60°C
-    this.iatNormalMin = 20.0; // °C - Lower bound of normal range
+    this.iatNormalMin = 5.0; // °C - Lower bound of normal range
     this.iatNormalMax = 60.0; // °C - Upper bound of normal range
     this.iatHighThreshold = 80.0; // °C - High temperature threshold (affects boost/spark)
     this.iatCriticalThreshold = 100.0; // °C - Critical temperature threshold
