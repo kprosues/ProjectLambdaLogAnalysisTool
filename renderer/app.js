@@ -5,6 +5,15 @@ let tabManager = null;
 // Make dataProcessor globally accessible for tab modules
 window.dataProcessor = null;
 
+// Global time range state for cross-tab chart synchronization
+window.globalTimeRange = {
+  min: null,
+  max: null,
+  originalMin: null,
+  originalMax: null,
+  isZoomed: false
+};
+
 // Shared smoothing state and utility
 window.smoothingConfig = {
   enabled: true, // Enabled by default when log file is loaded
@@ -55,6 +64,8 @@ window.applyDataSmoothing = function(dataArray, windowSize, enabled) {
 const openFileBtn = document.getElementById('openFileBtn');
 const openTuneFileBtn = document.getElementById('openTuneFileBtn');
 const resetZoomBtn = document.getElementById('resetZoomBtn');
+const zoomControlsContainer = document.getElementById('zoomControlsContainer');
+const timeRangeDisplay = document.getElementById('timeRangeDisplay');
 const dropZone = document.getElementById('dropZone');
 const contentArea = document.getElementById('contentArea');
 const loadingIndicator = document.getElementById('loadingIndicator');
@@ -1011,9 +1022,9 @@ async function processFile(content, filePath) {
       smoothDataToggle.checked = true;
     }
     
-    // Show reset zoom button
-    if (resetZoomBtn) {
-      resetZoomBtn.style.display = 'inline-block';
+    // Show zoom controls (reset button + time range display)
+    if (zoomControlsContainer) {
+      zoomControlsContainer.style.display = 'flex';
     }
     
     // Step 4: Render active tab (15% of progress)
@@ -1160,40 +1171,31 @@ function updateProgress(percent, text) {
 function resetChartZoom() {
   console.log('resetChartZoom called');
   
+  // Clear global time range state
+  window.globalTimeRange.min = null;
+  window.globalTimeRange.max = null;
+  window.globalTimeRange.isZoomed = false;
+  
+  // Update the time range display
+  updateTimeRangeDisplay(null, null, false);
+  
+  // Only reset charts in ACTIVE tab (visible charts)
+  // Hidden tabs will be reset when they become visible via tabManager.switchTab
   const activeTabId = tabManager.getActiveTab();
-  if (!activeTabId) {
-    console.warn('No active tab');
-    return;
-  }
+  if (!activeTabId) return;
   
-  const tab = tabManager.tabs.get(activeTabId);
-  if (!tab || !tab.module) {
-    console.warn('Active tab module not found');
-    return;
-  }
+  const activeTab = tabManager.tabs.get(activeTabId);
+  if (!activeTab || !activeTab.module) return;
   
-  const charts = tab.module.charts || {};
-  const chartOriginalRanges = tab.module.chartOriginalRanges || {};
+  const charts = activeTab.module.charts || {};
+  const chartOriginalRanges = activeTab.module.chartOriginalRanges || {};
   
-  // Check if charts exist
-  if (!charts || Object.keys(charts).length === 0) {
-    console.warn('No charts available to reset');
-    return;
-  }
-  
-  // Reset all charts to show full data range
   Object.keys(charts).forEach(key => {
     const chart = charts[key];
-    if (!chart) {
-      console.warn(`Chart ${key} is null`);
-      return;
-    }
+    if (!chart) return;
     
     const originalRange = chartOriginalRanges[key];
-    if (!originalRange) {
-      console.warn(`No original range for ${key}`);
-      return;
-    }
+    if (!originalRange) return;
     
     // Always use manual reset to ensure consistent behavior
     resetChartManually(chart, originalRange);
@@ -1338,6 +1340,21 @@ function zoomChartsToEvent(eventTime, eventDuration = 0, bufferSeconds = 3) {
 // Make zoomChartsToEvent globally accessible for tab modules
 window.zoomChartsToEvent = zoomChartsToEvent;
 
+function updateTimeRangeDisplay(min, max, isZoomed) {
+  const timeRangeDisplay = document.getElementById('timeRangeDisplay');
+  if (!timeRangeDisplay) return;
+  
+  if (isZoomed && min != null && max != null) {
+    const minStr = min.toFixed(2);
+    const maxStr = max.toFixed(2);
+    timeRangeDisplay.textContent = `${minStr}s – ${maxStr}s`;
+    timeRangeDisplay.style.display = 'block';
+  } else {
+    timeRangeDisplay.textContent = '';
+    timeRangeDisplay.style.display = 'none';
+  }
+}
+
 function synchronizeChartZoom(sourceChart) {
   // Prevent infinite loop by checking if we're already synchronizing
   if (sourceChart._syncing) {
@@ -1359,70 +1376,110 @@ function synchronizeChartZoom(sourceChart) {
     return;
   }
   
-  const tab = tabManager.tabs.get(activeTabId);
-  if (!tab || !tab.module) {
+  const activeTab = tabManager.tabs.get(activeTabId);
+  if (!activeTab || !activeTab.module) {
     return;
   }
   
-  const charts = tab.module.charts || {};
-  const chartOriginalRanges = tab.module.chartOriginalRanges || {};
+  const activeCharts = activeTab.module.charts || {};
+  const activeChartOriginalRanges = activeTab.module.chartOriginalRanges || {};
   
-  // Find which chart this is
+  // Find which chart this is in the active tab
   let sourceChartKey = null;
-  Object.keys(charts).forEach(key => {
-    if (charts[key] === sourceChart) {
+  Object.keys(activeCharts).forEach(key => {
+    if (activeCharts[key] === sourceChart) {
       sourceChartKey = key;
     }
   });
   
-  if (!sourceChartKey || !chartOriginalRanges[sourceChartKey]) {
+  if (!sourceChartKey || !activeChartOriginalRanges[sourceChartKey]) {
     return;
   }
   
-  const originalMin = chartOriginalRanges[sourceChartKey].min;
-  const originalMax = chartOriginalRanges[sourceChartKey].max;
+  const originalMin = activeChartOriginalRanges[sourceChartKey].min;
+  const originalMax = activeChartOriginalRanges[sourceChartKey].max;
   const originalRange = originalMax - originalMin;
   const currentRange = max - min;
   
   // Check if we're at full zoom (within 1% tolerance)
   const isFullZoom = Math.abs(currentRange - originalRange) / originalRange < 0.01;
   
-  // Apply the same zoom to all other charts in this tab
-  Object.keys(charts).forEach(key => {
-    if (charts[key] && charts[key] !== sourceChart) {
-      const targetChart = charts[key];
-      targetChart._syncing = true; // Prevent recursive sync
-      
-      if (isFullZoom) {
-        // Reset zoom on all charts using manual reset
-        const targetOriginal = chartOriginalRanges[key];
-        if (targetOriginal) {
-          resetChartManually(targetChart, targetOriginal);
-        }
-      } else {
-        // Calculate the relative position in the original range
-        const sourceRelativeMin = (min - originalMin) / originalRange;
-        const sourceRelativeMax = (max - originalMin) / originalRange;
-        
-        // Apply same relative zoom to target chart
-        const targetOriginal = chartOriginalRanges[key];
-        if (targetOriginal) {
-          const targetMin = targetOriginal.min + (sourceRelativeMin * (targetOriginal.max - targetOriginal.min));
-          const targetMax = targetOriginal.min + (sourceRelativeMax * (targetOriginal.max - targetOriginal.min));
-          
-          // Apply zoom
-          if (targetChart.options?.scales?.x) {
-            targetChart.options.scales.x.min = targetMin;
-            targetChart.options.scales.x.max = targetMax;
-          }
-          targetChart.update('none');
-        }
+  // Calculate the relative position in the original range
+  const sourceRelativeMin = (min - originalMin) / originalRange;
+  const sourceRelativeMax = (max - originalMin) / originalRange;
+  
+  // Update global time range state
+  if (isFullZoom) {
+    window.globalTimeRange.min = null;
+    window.globalTimeRange.max = null;
+    window.globalTimeRange.isZoomed = false;
+  } else {
+    window.globalTimeRange.min = sourceRelativeMin;
+    window.globalTimeRange.max = sourceRelativeMax;
+    window.globalTimeRange.originalMin = originalMin;
+    window.globalTimeRange.originalMax = originalMax;
+    window.globalTimeRange.isZoomed = true;
+  }
+  
+  // Update the time range display
+  updateTimeRangeDisplay(min, max, !isFullZoom);
+  
+  // Only sync charts in the ACTIVE tab (visible charts)
+  // Hidden tabs will have zoom applied when they become visible via tabManager.switchTab
+  Object.keys(activeCharts).forEach(key => {
+    const targetChart = activeCharts[key];
+    if (!targetChart || targetChart === sourceChart) return;
+    
+    targetChart._syncing = true;
+    
+    if (isFullZoom) {
+      // Reset zoom on all charts using manual reset
+      const targetOriginal = activeChartOriginalRanges[key];
+      if (targetOriginal) {
+        resetChartManually(targetChart, targetOriginal);
       }
-      
-      targetChart._syncing = false;
+    } else {
+      // Apply same relative zoom to target chart
+      const targetOriginal = activeChartOriginalRanges[key];
+      if (targetOriginal) {
+        const targetMin = targetOriginal.min + (sourceRelativeMin * (targetOriginal.max - targetOriginal.min));
+        const targetMax = targetOriginal.min + (sourceRelativeMax * (targetOriginal.max - targetOriginal.min));
+        
+        // Apply zoom
+        if (targetChart.options?.scales?.x) {
+          targetChart.options.scales.x.min = targetMin;
+          targetChart.options.scales.x.max = targetMax;
+        }
+        targetChart.update('none');
+      }
     }
+    
+    targetChart._syncing = false;
   });
   
   sourceChart._syncing = false;
+}
+
+// Apply global time range to a specific chart (used when tabs render)
+window.applyGlobalTimeRange = function(chart, originalRange) {
+  if (!window.globalTimeRange.isZoomed || !chart || !originalRange) {
+    return;
+  }
+  
+  const relativeMin = window.globalTimeRange.min;
+  const relativeMax = window.globalTimeRange.max;
+  
+  if (relativeMin == null || relativeMax == null) {
+    return;
+  }
+  
+  const targetMin = originalRange.min + (relativeMin * (originalRange.max - originalRange.min));
+  const targetMax = originalRange.min + (relativeMax * (originalRange.max - originalRange.min));
+  
+  if (chart.options?.scales?.x) {
+    chart.options.scales.x.min = targetMin;
+    chart.options.scales.x.max = targetMax;
+  }
+  chart.update('none');
 }
 

@@ -3,6 +3,15 @@ const FuelingTab = {
   // Store reference to the wrapped tab module
   afrTab: null,
 
+  // Expose charts and chartOriginalRanges from wrapped module
+  get charts() {
+    return this.afrTab ? this.afrTab.charts : {};
+  },
+  
+  get chartOriginalRanges() {
+    return this.afrTab ? this.afrTab.chartOriginalRanges : {};
+  },
+
   initialize() {
     // Initialize AFR Analysis tab functionality
     if (typeof AFRAnalysisTab !== 'undefined') {

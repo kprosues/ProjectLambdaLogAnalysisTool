@@ -98,6 +98,15 @@ class TabManager {
               overlay.style.display = 'none';
             }
           }
+          
+          // Apply global time range AFTER browser has painted the tab
+          // Using nested requestAnimationFrame ensures the tab is fully visible
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              this.applyGlobalTimeRangeToTab(tab);
+            });
+          });
+          
         } catch (error) {
           console.error(`Error rendering tab ${tabId}:`, error);
           // Remove loading state on error
@@ -142,6 +151,73 @@ class TabManager {
   getTabAnalyzer(tabId) {
     const tab = this.tabs.get(tabId);
     return tab ? tab.analyzer : null;
+  }
+
+  applyGlobalTimeRangeToTab(tab) {
+    if (!tab || !tab.module) return;
+    
+    const charts = tab.module.charts || {};
+    const chartOriginalRanges = tab.module.chartOriginalRanges || {};
+    
+    // Check if there's a global zoom to apply
+    const hasGlobalZoom = window.globalTimeRange && 
+                          window.globalTimeRange.isZoomed && 
+                          window.globalTimeRange.min != null && 
+                          window.globalTimeRange.max != null;
+    
+    Object.keys(charts).forEach(key => {
+      const chart = charts[key];
+      const originalRange = chartOriginalRanges[key];
+      
+      if (!chart) return;
+      
+      // First, resize to ensure canvas dimensions are correct
+      chart.resize();
+      
+      // Set syncing flag to prevent triggering synchronizeChartZoom
+      chart._syncing = true;
+      
+      if (hasGlobalZoom && originalRange) {
+        // Apply the global zoom
+        const relativeMin = window.globalTimeRange.min;
+        const relativeMax = window.globalTimeRange.max;
+        const targetMin = originalRange.min + (relativeMin * (originalRange.max - originalRange.min));
+        const targetMax = originalRange.min + (relativeMax * (originalRange.max - originalRange.min));
+        
+        // Use zoomScale if available (zoom plugin method) for more reliable zooming
+        if (typeof chart.zoomScale === 'function') {
+          chart.zoomScale('x', { min: targetMin, max: targetMax }, 'none');
+        } else {
+          // Fallback: Update options directly
+          if (chart.options?.scales?.x) {
+            chart.options.scales.x.min = targetMin;
+            chart.options.scales.x.max = targetMax;
+          }
+          if (chart.scales?.x) {
+            chart.scales.x.options.min = targetMin;
+            chart.scales.x.options.max = targetMax;
+          }
+          chart.update('none');
+        }
+      } else if (originalRange) {
+        // No zoom - reset to original range using resetZoom if available
+        if (typeof chart.resetZoom === 'function') {
+          chart.resetZoom('none');
+        }
+        // Also set the original range explicitly
+        if (chart.options?.scales?.x) {
+          chart.options.scales.x.min = originalRange.min;
+          chart.options.scales.x.max = originalRange.max;
+        }
+        if (chart.scales?.x) {
+          chart.scales.x.options.min = originalRange.min;
+          chart.scales.x.options.max = originalRange.max;
+        }
+        chart.update('none');
+      }
+      
+      chart._syncing = false;
+    });
   }
 }
 

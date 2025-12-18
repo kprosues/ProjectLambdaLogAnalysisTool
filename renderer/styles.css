@@ -464,6 +464,31 @@ body.dark-mode .chart-wrapper h3 {
   transform: translateY(0);
 }
 
+/* Zoom controls container and time range display */
+.zoom-controls-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.time-range-display {
+  font-size: 11px;
+  font-weight: 500;
+  color: #0066cc;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  padding: 2px 6px;
+  background: rgba(0, 102, 204, 0.08);
+  border-radius: 3px;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+body.dark-mode .time-range-display {
+  color: #4da6ff;
+  background: rgba(77, 166, 255, 0.12);
+}
+
 .chart-wrapper canvas {
   width: 100% !important;
   height: 400px !important;

@@ -359,6 +359,13 @@ const BoostControlTab = {
 
     const columns = analysisData.columns;
     
+    // Get full time range from unfiltered data (for consistent zoom sync across tabs)
+    const fullTimes = data.map(row => row['Time (s)']);
+    const fullTimeRange = fullTimes.length > 0 ? {
+      min: parseFloat(fullTimes[0]),
+      max: parseFloat(fullTimes[fullTimes.length - 1])
+    } : null;
+    
     // Filter data to only show boost conditions (>= 100 kPa)
     // This matches the filtering done in the analyzer
     const filteredData = data.filter(row => {
@@ -633,11 +640,9 @@ const BoostControlTab = {
         options: boostTargetChartOptions
       });
 
-      if (times.length > 0) {
-        this.chartOriginalRanges.boostTarget = {
-          min: parseFloat(times[0]),
-          max: parseFloat(times[times.length - 1])
-        };
+      // Use full time range for consistent zoom sync across tabs
+      if (fullTimeRange) {
+        this.chartOriginalRanges.boostTarget = fullTimeRange;
       }
     }
 
@@ -718,11 +723,9 @@ const BoostControlTab = {
         }
       });
 
-      if (times.length > 0) {
-        this.chartOriginalRanges.boostError = {
-          min: parseFloat(times[0]),
-          max: parseFloat(times[times.length - 1])
-        };
+      // Use full time range for consistent zoom sync across tabs
+      if (fullTimeRange) {
+        this.chartOriginalRanges.boostError = fullTimeRange;
       }
     }
 
@@ -818,11 +821,9 @@ const BoostControlTab = {
         options: wastegateChartOptions
       });
 
-      if (times.length > 0) {
-        this.chartOriginalRanges.wastegate = {
-          min: parseFloat(times[0]),
-          max: parseFloat(times[times.length - 1])
-        };
+      // Use full time range for consistent zoom sync across tabs
+      if (fullTimeRange) {
+        this.chartOriginalRanges.wastegate = fullTimeRange;
       }
     }
   },

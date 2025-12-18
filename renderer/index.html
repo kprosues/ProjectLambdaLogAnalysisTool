@@ -17,7 +17,10 @@
         <div class="file-controls">
           <button id="openTuneFileBtn" class="btn btn-primary">Load Tune File</button>
           <button id="openFileBtn" class="btn btn-secondary" disabled title="Please load a tune file first">Open Log File</button>
-          <button id="resetZoomBtn" class="btn btn-secondary" style="display: none;">Reset Zoom</button>
+          <div id="zoomControlsContainer" class="zoom-controls-container" style="display: none;">
+            <span id="timeRangeDisplay" class="time-range-display"></span>
+            <button id="resetZoomBtn" class="btn btn-secondary">Reset Zoom</button>
+          </div>
           <button id="openTooltipSettingsBtn" class="btn btn-secondary" title="Configure tooltip fields">Tooltip Settings</button>
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-left: 15px;">
             <input type="checkbox" id="global-smoothDataToggle" style="cursor: pointer;" checked>
