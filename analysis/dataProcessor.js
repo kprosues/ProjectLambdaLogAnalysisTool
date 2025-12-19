@@ -24,7 +24,7 @@ class DataProcessor {
       const totalSize = csvContent.length;
       const accumulatedData = [];
       let lastProgressUpdate = 0;
-      let processedBytes = 0;
+      let capturedMeta = null; // Capture meta from first chunk
 
       // Throttle progress updates
       const updateProgress = (percent) => {
@@ -45,6 +45,11 @@ class DataProcessor {
           dynamicTyping: true,
           // Use chunk mode for better performance with progress
           chunk: (results, parser) => {
+            // Capture meta from first chunk (contains header/field info)
+            if (!capturedMeta && results.meta) {
+              capturedMeta = results.meta;
+            }
+            
             // Accumulate chunk data
             if (results.data && results.data.length > 0) {
               accumulatedData.push(...results.data);
@@ -56,15 +61,15 @@ class DataProcessor {
             const progress = Math.min(90, (accumulatedData.length / estimatedTotalRows) * 90);
             updateProgress(progress);
           },
-          complete: (results) => {
+          complete: () => {
             console.log('parseCSV: Parse complete, accumulated rows:', accumulatedData.length);
             updateProgress(95);
 
-            // Process results
+            // Process results using captured meta and accumulated data
             const finalResults = {
-              ...results,
               data: accumulatedData,
-              meta: results.meta || {}
+              meta: capturedMeta || { fields: [] },
+              errors: []
             };
 
             this._processParseResults(finalResults, resolve, reject);
@@ -108,9 +113,29 @@ class DataProcessor {
       // Find time column
       const timeColumn = this._findTimeColumn();
       
-      // Filter and process data in a single pass
+      // First pass: find the starting time (minimum time value in the log)
+      let startTime = Infinity;
+      for (let i = 0; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row) continue;
+        
+        const timeValue = row[timeColumn];
+        if (timeValue !== null && timeValue !== undefined && !isNaN(timeValue)) {
+          if (timeValue < startTime) {
+            startTime = timeValue;
+          }
+        }
+      }
+      
+      // Calculate cutoff time (ignore first 10 seconds)
+      const IGNORE_FIRST_SECONDS = 10;
+      const cutoffTime = startTime + IGNORE_FIRST_SECONDS;
+      console.log(`Datalog start time: ${startTime}s, ignoring data before ${cutoffTime}s (first ${IGNORE_FIRST_SECONDS} seconds)`);
+      
+      // Filter and process data in a single pass, skipping first 10 seconds
       this.data = [];
       this._timeIndex = [];
+      let skippedRows = 0;
       
       for (let i = 0; i < rawData.length; i++) {
         const row = rawData[i];
@@ -121,6 +146,12 @@ class DataProcessor {
           continue;
         }
         
+        // Skip rows within the first 10 seconds
+        if (timeValue < cutoffTime) {
+          skippedRows++;
+          continue;
+        }
+        
         // Process numeric columns (dynamicTyping should handle most of this)
         const processedRow = this._processRow(row);
         
@@ -128,6 +159,7 @@ class DataProcessor {
         this._timeIndex.push(timeValue);
       }
 
+      console.log(`Skipped ${skippedRows} rows from first ${IGNORE_FIRST_SECONDS} seconds`);
       console.log('Filtered data rows:', this.data.length);
 
       // Clear caches

@@ -1,81 +1,7 @@
 // Analysis modules are loaded via script tags in index.html
 // Note: AppState.js now manages global state (dataProcessor, smoothingConfig, etc.)
-// These variables are kept for backward compatibility
-let dataProcessor = null;
+// Local reference to tabManager (dataProcessor is managed by AppState)
 let tabManager = null;
-
-// Make dataProcessor globally accessible for tab modules
-// (Now managed by AppState.js with backward-compatible window properties)
-window.dataProcessor = null;
-
-// Global time range state for cross-tab chart synchronization
-// (Now managed by AppState.js with backward-compatible window properties)
-if (!window.globalTimeRange) {
-  window.globalTimeRange = {
-    min: null,
-    max: null,
-    originalMin: null,
-    originalMax: null,
-    isZoomed: false
-  };
-}
-
-// Shared smoothing state and utility
-// (Now managed by AppState.js with backward-compatible window properties)
-if (!window.smoothingConfig) {
-  window.smoothingConfig = {
-    enabled: true, // Enabled by default when log file is loaded
-    windowSize: 5 // Moving average window size
-  };
-}
-
-// Shared smoothing utility function
-// (Now provided by AnalyzerUtils.applySmoothing, this is kept for backward compatibility)
-if (!window.applyDataSmoothing) {
-  window.applyDataSmoothing = function(dataArray, windowSize, enabled) {
-    // Use AnalyzerUtils if available
-    if (window.AnalyzerUtils && window.AnalyzerUtils.applySmoothing) {
-      return window.AnalyzerUtils.applySmoothing(dataArray, windowSize, enabled);
-    }
-    
-    if (!enabled || windowSize <= 1) {
-      return dataArray;
-    }
-    
-    const smoothed = new Array(dataArray.length);
-    const halfWindow = Math.floor(windowSize / 2);
-    
-    for (let i = 0; i < dataArray.length; i++) {
-      const value = dataArray[i];
-      
-      // Preserve NaN values (gaps) without smoothing
-      if (isNaN(value)) {
-        smoothed[i] = NaN;
-        continue;
-      }
-      
-      // Calculate moving average
-      let sum = 0;
-      let count = 0;
-      const start = Math.max(0, i - halfWindow);
-      const end = Math.min(dataArray.length - 1, i + halfWindow);
-      
-      for (let j = start; j <= end; j++) {
-        const val = dataArray[j];
-        // Only include valid numbers (not NaN) in the average
-        if (!isNaN(val) && typeof val === 'number') {
-          sum += val;
-          count++;
-        }
-      }
-      
-      // Use original value if no valid neighbors found
-      smoothed[i] = count > 0 ? sum / count : value;
-    }
-    
-    return smoothed;
-  };
-}
 
 // DOM Elements
 const openFileBtn = document.getElementById('openFileBtn');
@@ -94,9 +20,7 @@ const fileName = document.getElementById('fileName');
 const tuneFileName = document.getElementById('tuneFileName');
 const contentLoadingOverlay = document.getElementById('contentLoadingOverlay');
 
-// Global tune file parser instance
-let tuneFileParser = null;
-window.tuneFileParser = null;
+// Note: tuneFileParser is managed by AppState.js via window.tuneFileParser
 
 // Initialize
 // Initialize dark mode
@@ -588,7 +512,7 @@ async function handleOpenTuneFile() {
     
     if (result && result.success) {
       // Parse tune file
-      tuneFileParser = new TuneFileParser();
+      const tuneFileParser = new TuneFileParser();
       const parseSuccess = tuneFileParser.parse(result.content);
       
       if (parseSuccess && tuneFileParser.isLoaded()) {
@@ -596,9 +520,9 @@ async function handleOpenTuneFile() {
         
         // Update UI
         if (tuneFileName) {
-          const fileName = result.path ? result.path.split(/[/\\]/).pop() : 'Tune file loaded';
+          const fileNameStr = result.path ? result.path.split(/[/\\]/).pop() : 'Tune file loaded';
           const fullPath = result.path || 'Tune file loaded';
-          tuneFileName.textContent = fileName;
+          tuneFileName.textContent = fileNameStr;
           tuneFileName.title = fullPath; // Tooltip with full path
           tuneFileName.style.display = 'inline';
         }
@@ -620,7 +544,7 @@ async function handleOpenTuneFile() {
         console.log('Maps loaded:', tuneFileParser.maps.size);
         
         // If log file is already loaded, clear cache so analyzers can re-run with tune file
-        if (dataProcessor && dataProcessor.data && tabManager) {
+        if (window.dataProcessor && window.dataProcessor.data && tabManager) {
           console.log('Log file already loaded. Clear cache to re-run analysis with tune file.');
           tabManager.clearCache();
           // Re-run analysis for active tab
@@ -638,7 +562,6 @@ async function handleOpenTuneFile() {
         }
       } else {
         alert('Error parsing tune file. Please ensure it is a valid JSON tune file.');
-        tuneFileParser = null;
         window.tuneFileParser = null;
         if (tuneFileName) {
           tuneFileName.style.display = 'none';
@@ -662,7 +585,6 @@ async function handleOpenTuneFile() {
   } catch (error) {
     console.error('Error in handleOpenTuneFile:', error);
     alert(`Error opening tune file: ${error.message}`);
-    tuneFileParser = null;
     window.tuneFileParser = null;
     if (tuneFileName) {
       tuneFileName.style.display = 'none';
@@ -753,8 +675,9 @@ async function processFile(content, filePath) {
     // Step 1: Parse CSV (40% of progress)
     console.log('Starting CSV parse...');
     updateProgress(10, 'Parsing CSV file...');
-    dataProcessor = new DataProcessor();
-    // Make globally accessible
+    
+    // Create new DataProcessor and store in global state (AppState manages window.dataProcessor)
+    const dataProcessor = new DataProcessor();
     window.dataProcessor = dataProcessor;
     
     // Update tooltip config with available fields

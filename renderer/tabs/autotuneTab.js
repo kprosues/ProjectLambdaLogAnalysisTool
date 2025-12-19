@@ -261,6 +261,21 @@ const AutotuneTab = {
             return row && row['Time (s)'] !== null && row['Time (s)'] !== undefined && !isNaN(row['Time (s)']);
           });
 
+          // Find starting time and ignore first 10 seconds
+          const IGNORE_FIRST_SECONDS = 10;
+          let startTime = Infinity;
+          data.forEach(row => {
+            const timeValue = row['Time (s)'];
+            if (timeValue < startTime) {
+              startTime = timeValue;
+            }
+          });
+          
+          const cutoffTime = startTime + IGNORE_FIRST_SECONDS;
+          const originalCount = data.length;
+          data = data.filter(row => row['Time (s)'] >= cutoffTime);
+          console.log(`Additional log: Skipped ${originalCount - data.length} rows from first ${IGNORE_FIRST_SECONDS} seconds`);
+
           // Convert numeric columns
           const numericColumns = [
             'Time (s)',
